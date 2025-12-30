@@ -88,7 +88,7 @@ class BaseAgent(AgentRegistryMixin):
                 "step_number": self._context.iteration,
                 "timestamp": datetime.now().isoformat(),
                 "step_type": "reasoning",
-                "agent_reasoning": result.model_dump(),
+                "agent_reasoning": result.model_dump(mode="json"),
             }
         )
 
@@ -108,7 +108,7 @@ class BaseAgent(AgentRegistryMixin):
                 "timestamp": datetime.now().isoformat(),
                 "step_type": "tool_execution",
                 "tool_name": tool.tool_name,
-                "agent_tool_context": tool.model_dump(),
+                "agent_tool_context": tool.model_dump(mode="json"),
                 "agent_tool_execution_result": result,
             }
         )
@@ -127,7 +127,7 @@ class BaseAgent(AgentRegistryMixin):
         agent_log = {
             "id": self.id,
             "model_config": self.config.llm.model_dump(
-                exclude={"api_key", "proxy"}
+                exclude={"api_key", "proxy"}, mode="json"
             ),  # Sensitive data excluded by default
             "task": self.task,
             "toolkit": [tool.tool_name for tool in self.toolkit],
