@@ -1,11 +1,32 @@
 import logging
+from typing import Any
 
 from tavily import AsyncTavilyClient
 
-from sgr_agent_core.agent_definition import SearchConfig
+from sgr_agent_core.agent_definition import AgentConfig, SearchConfig
 from sgr_agent_core.models import SourceData
 
 logger = logging.getLogger(__name__)
+
+SEARCH_CONFIG_KEYS = (
+    "tavily_api_key",
+    "tavily_api_base_url",
+    "max_searches",
+    "max_results",
+    "content_limit",
+)
+
+
+def search_config_from_kwargs(config: AgentConfig | None, kwargs: dict[str, Any]) -> SearchConfig:
+    """Build SearchConfig from config.search and tool kwargs (kwargs override).
+
+    Used by WebSearchTool and ExtractPageContentTool to get search
+    settings from the tools array config (kwargs) with fallback to agent
+    config.search.
+    """
+    base = config.search.model_dump() if config and config.search else {}
+    overrides = {k: v for k, v in kwargs.items() if k in SEARCH_CONFIG_KEYS and v is not None}
+    return SearchConfig(**{**base, **overrides})
 
 
 class TavilySearchService:

@@ -659,6 +659,31 @@ class TestAgentFactoryRegistryIntegration:
             )
             assert len(agent.toolkit) >= 1
 
+    @pytest.mark.asyncio
+    async def test_create_agent_with_tools_dict_config_passes_tool_configs(self):
+        """Test that tools as list of dicts (name + kwargs) populate
+        agent.tool_configs."""
+        with (
+            patch("sgr_agent_core.agent_factory.MCP2ToolConverter.build_tools_from_mcp", return_value=[]),
+            mock_global_config(),
+        ):
+            agent_def = AgentDefinition(
+                name="sgr_agent",
+                base_class=SGRAgent,
+                tools=[{"name": "reasoningtool", "custom_key": "custom_value"}],
+                llm={"api_key": "test-key", "base_url": "https://api.openai.com/v1"},
+                prompts={
+                    "system_prompt_str": "Test system prompt",
+                    "initial_user_request_str": "Test initial request",
+                    "clarification_response_str": "Test clarification response",
+                },
+                execution={},
+            )
+            agent = await AgentFactory.create(agent_def, task_messages=[{"role": "user", "content": "Test task"}])
+
+            assert isinstance(agent, SGRAgent)
+            assert agent.tool_configs.get("reasoningtool") == {"custom_key": "custom_value"}
+
 
 class TestAgentFactoryErrorHandling:
     """Tests for error handling in AgentFactory."""

@@ -1,7 +1,7 @@
 """Agent Factory for dynamic agent creation from definitions."""
 
 import logging
-from typing import Type, TypeVar
+from typing import Any, Type, TypeVar
 
 import httpx
 from openai import AsyncOpenAI
@@ -146,6 +146,35 @@ class AgentFactory:
         return generator_class
 
     @classmethod
+    def _resolve_tools_with_configs(
+        cls, tools_spec: list[Any], config: GlobalConfig
+    ) -> tuple[list[type[BaseTool]], dict[str, dict[str, Any]]]:
+        """Resolve tools from spec (str, type, or dict with 'name' + kwargs).
+
+        Args:
+            tools_spec: List of tool names, classes, or dicts with 'name' and optional kwargs
+            config: Global configuration containing tool definitions
+
+        Returns:
+            Tuple of (list of tool classes, dict of tool_name -> kwargs for each tool)
+        """
+        toolkit: list[type[BaseTool]] = []
+        tool_configs: dict[str, dict[str, Any]] = {}
+        for item in tools_spec:
+            if isinstance(item, dict):
+                name = item["name"]
+                kwargs = {k: v for k, v in item.items() if k not in ("name", "type", "base_class")}
+                tool_class = cls._resolve_tool(name, config)
+                toolkit.append(tool_class)
+                tool_configs[tool_class.tool_name] = kwargs
+            else:
+                tool_class = cls._resolve_tool(item, config)
+                toolkit.append(tool_class)
+                if tool_class.tool_name not in tool_configs:
+                    tool_configs[tool_class.tool_name] = {}
+        return toolkit, tool_configs
+
+    @classmethod
     async def create(cls, agent_def: AgentDefinition, task_messages: list[ChatCompletionMessageParam]) -> Agent:
         """Create an agent instance from a definition.
 
@@ -187,8 +216,8 @@ class AgentFactory:
             logger.error(error_msg)
             raise ValueError(error_msg)
         mcp_tools: list = await MCP2ToolConverter.build_tools_from_mcp(agent_def.mcp)
-        config = GlobalConfig()
-        tools = cls._resolve_tools(agent_def.tools, config)
+        global_config = GlobalConfig()
+        tools, tool_configs = cls._resolve_tools_with_configs(agent_def.tools, global_config)
         tools.extend(mcp_tools)
 
         try:
@@ -202,6 +231,7 @@ class AgentFactory:
                 task_messages=task_messages,
                 def_name=agent_def.name,
                 toolkit=tools,
+                tool_configs=tool_configs,
                 openai_client=cls._create_client(agent_def.llm),
                 agent_config=agent_def,
                 streaming_generator=cls._resolve_streaming_generator(agent_def.execution.streaming_generator),

@@ -42,6 +42,7 @@ class BaseAgent(AgentRegistryMixin):
         toolkit: list[Type[BaseTool]],
         def_name: str | None = None,
         streaming_generator: type[BaseStreamingGenerator] = OpenAIStreamingGenerator,
+        tool_configs: dict[str, dict] | None = None,
         **kwargs: dict,
     ):
         self.id = f"{def_name or self.name}_{uuid.uuid4()}"
@@ -52,6 +53,7 @@ class BaseAgent(AgentRegistryMixin):
         self.creation_time = datetime.now()
         self.task_messages = task_messages
         self.toolkit = toolkit
+        self.tool_configs = tool_configs or {}
 
         self._context = AgentContext()
         self.conversation = []

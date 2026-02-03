@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic import Field
 
+from sgr_agent_core.agent_definition import AgentConfig
 from sgr_agent_core.base_tool import BaseTool
 from sgr_agent_core.models import SearchResult
-from sgr_agent_core.services.tavily_search import TavilySearchService
+from sgr_agent_core.services.tavily_search import TavilySearchService, search_config_from_kwargs
 
 if TYPE_CHECKING:
-    from sgr_agent_core.agent_definition import AgentConfig
     from sgr_agent_core.models import AgentContext
 
 logger = logging.getLogger(__name__)
@@ -52,15 +52,20 @@ class WebSearchTool(BaseTool):
         le=10,
     )
 
-    async def __call__(self, context: AgentContext, config: AgentConfig, **_) -> str:
-        """Execute web search using TavilySearchService."""
+    async def __call__(self, context: AgentContext, config: AgentConfig, **kwargs: Any) -> str:
+        """Execute web search using TavilySearchService.
 
+        Search settings are taken from kwargs (tool config) with
+        fallback to config.search.
+        """
+        search_config = search_config_from_kwargs(config, dict(kwargs))
         logger.info(f"🔍 Search query: '{self.query}'")
-        self._search_service = TavilySearchService(config.search)
+        self._search_service = TavilySearchService(search_config)
 
+        max_results_limit = search_config.max_results
         sources = await self._search_service.search(
             query=self.query,
-            max_results=min(self.max_results, config.search.max_results),
+            max_results=min(self.max_results, max_results_limit),
             include_raw_content=False,
         )
 

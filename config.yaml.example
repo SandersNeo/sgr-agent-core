@@ -99,9 +99,8 @@ agents:
         deepwiki:
           url: "https://mcp.deepwiki.com/mcp"
 
-    # Tools this agent can use (must be registered in tool registry)
-    # Recommended: use snake_case format (e.g., "web_search_tool")
-    # PascalCase format (e.g., "WebSearchTool") is supported for backward compatibility
+    # Tools: names, or dicts with "name" and optional kwargs (e.g. search settings per tool)
+    # Example: {"name": "web_search_tool", "max_results": 15, "max_searches": 6}
     tools:
       - "web_search_tool"
       - "extract_page_content_tool"
