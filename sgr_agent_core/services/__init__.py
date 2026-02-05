@@ -11,4 +11,5 @@ __all__ = [
     "ToolRegistry",
     "AgentRegistry",
     "PromptLoader",
+    "ToolInstantiator",
 ]

@@ -23,6 +23,17 @@ class NextStepToolStub(ReasoningTool, ABC):
     function: T = Field(description="Select the appropriate tool for the next step")
 
 
+class ToolNameSelectorStub(ReasoningTool, ABC):
+    """Stub class for tool name selection that inherits from ReasoningTool.
+
+    Used by IronAgent to select tool name as part of reasoning phase.
+    (!) Stub class for correct autocomplete. Use
+    NextStepToolsBuilder.build_NextStepToolSelector
+    """
+
+    function_name_choice: str = Field(description="Select the name of the tool to use")
+
+
 class DiscriminantToolMixin(BaseModel):
     tool_name_discriminator: str = Field(..., description="Tool name discriminator")
 
@@ -60,8 +71,38 @@ class NextStepToolsBuilder:
 
     @classmethod
     def build_NextStepTools(cls, tools_list: list[Type[T]]) -> Type[NextStepToolStub]:  # noqa
+        """Build a model with all NextStepTool args."""
         return create_model(
             "NextStepTools",
             __base__=NextStepToolStub,
             function=(cls._create_tool_types_union(tools_list), Field()),
         )
+
+    @classmethod
+    def build_NextStepToolSelector(cls, tools_list: list[Type[T]]) -> Type[ToolNameSelectorStub]:
+        """Build a model for selecting tool name."""
+        # Extract tool names and descriptions
+        tool_names = [tool.tool_name for tool in tools_list]
+        tool_descriptions = [tool.description for tool in tools_list]
+
+        description_lines = ["Choose the name for best tool to use from the list. Available tools:"]
+        for name, desc in zip(tool_names, tool_descriptions):
+            description_lines.append(f"- {name}: {desc}")
+        description_text = "\n".join(description_lines)
+
+        if len(tool_names) == 1:
+            literal_type = Literal[tool_names[0]]
+        else:
+            # Create union of individual Literal types using operator.or_
+            # Literal["a"] | Literal["b"] is equivalent to Literal["a", "b"]
+            literal_types = [Literal[name] for name in tool_names]
+            literal_type = reduce(operator.or_, literal_types)
+
+        # Create model dynamically, inheriting from ToolNameSelectorStub (which inherits from ReasoningTool)
+        model_class = create_model(
+            "NextStepToolSelector",
+            __base__=ToolNameSelectorStub,
+            function_name_choice=(literal_type, Field(description=description_text)),
+        )
+        model_class.tool_name = "nextsteptoolselector"  # type: ignore
+        return model_class
