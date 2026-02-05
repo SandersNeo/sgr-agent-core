@@ -23,12 +23,13 @@ class ToolInstantiator:
         "- Output ONLY raw JSON object (no markdown, no code blocks, no explanations)\n"
         "- Fill fields with actual values matching the schema types\n"
         "- All strings must be quoted, arrays in [], objects in {}\n\n"
-        "<Example>\n"
+        "<GoodExample>\n"
         '{"field": "value", "number": 42, "list": ["a", "b"]}\n'
-        "</Example>\n\n"
+        "</GoodExample>\n\n"
         "<WrongExample>\n"
         '{"field": {"type": "string", "description": "..."}}\n'
-        "OR\n"
+        "</WrongExample>\n\n"
+        "<WrongExample>\n"
         "```json\n{...}\n```\n"
         "</WrongExample>\n\n"
         "The schema below shows the STRUCTURE - provide VALUES that match it.\n\n"
@@ -44,6 +45,55 @@ class ToolInstantiator:
         self.errors: list[str] = []
         self.instance: "BaseTool | None" = None
         self.input_content: str = ""
+
+    def _clearing_context(self, content: str) -> str:
+        """Extract JSON object from content by finding first { and last }.
+
+        Args:
+            content: Raw content that may contain JSON mixed with other text
+
+        Returns:
+            Extracted JSON string (from first { to last })
+        """
+        first_brace = content.find("{")
+        if first_brace == -1:
+            return content
+
+        last_brace = content.rfind("}")
+        if last_brace == -1 or last_brace < first_brace:
+            return content
+
+        return content[first_brace : last_brace + 1]
+
+    def _format_json_error(self, error: JSONDecodeError, content: str) -> str:
+        """Format JSON decode error with context around the error position.
+
+        Args:
+            error: JSONDecodeError exception
+            content: Content that failed to parse
+
+        Returns:
+            Formatted error message with context
+        """
+        error_pos = getattr(error, "pos", None)
+        if error_pos is None:
+            return f"Failed to parse JSON: {error}"
+
+        # Calculate context window (±15 characters)
+        context_size = 15
+        start = max(0, error_pos - context_size)
+        end = min(len(content), error_pos + context_size)
+
+        context_before = content[start:error_pos]
+        context_after = content[error_pos:end]
+
+        # Show position and context
+        error_msg = (
+            f"JSON parse error at position {error_pos}: {error.msg}\n"
+            f"Context: ...{context_before}[Error here]{context_after}..."
+        )
+
+        return error_msg
 
     def generate_format_prompt(
         self,
@@ -101,7 +151,7 @@ class ToolInstantiator:
         self.input_content = content
 
         try:
-            content = content.strip().replace("\n", "")
+            content = self._clearing_context(content)
             self.instance = self.tool_class(**json.loads(content))
             return self.instance
         except ValidationError as e:
@@ -110,6 +160,10 @@ class ToolInstantiator:
                     f"pydantic validation error - type: {err['type']} - " f"field: {err['loc']} - {err['msg']}"
                 )
             raise ValueError("Failed to build model") from e
-        except (JSONDecodeError, ValueError) as e:
+        except JSONDecodeError as e:
+            error_msg = self._format_json_error(e, content)
+            self.errors.append(error_msg)
+            raise ValueError("Failed to build model") from e
+        except ValueError as e:
             self.errors.append(f"Failed to parse JSON: {e}")
             raise ValueError("Failed to build model") from e

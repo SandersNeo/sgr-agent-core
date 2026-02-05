@@ -1,6 +1,7 @@
 """Tests for ToolInstantiator service."""
 
 import json
+from json import JSONDecodeError
 
 import pytest
 
@@ -103,7 +104,8 @@ class TestToolInstantiator:
             instantiator.build_model(content)
 
         assert len(instantiator.errors) > 0
-        assert any("Failed to parse JSON" in err for err in instantiator.errors)
+        # Check for JSON parse error message (new format with context)
+        assert any("JSON parse error" in err or "Failed to parse JSON" in err for err in instantiator.errors)
         assert instantiator.input_content == content
         assert instantiator.instance is None
 
@@ -192,3 +194,70 @@ class TestToolInstantiator:
         # Note: build_model clears errors at start, so each attempt starts fresh
         # But we can check that errors are added during each attempt
         assert len(instantiator.errors) > 0
+
+    def test_clearing_context_extracts_json(self):
+        """Test _clearing_context extracts JSON from mixed content."""
+        instantiator = ToolInstantiator(ReasoningTool)
+
+        # Content with text before and after JSON
+        content = 'Some text before {"reasoning_steps": ["step1"], "current_situation": "test"} and after'
+        result = instantiator._clearing_context(content)
+
+        assert result.startswith("{")
+        assert result.endswith("}")
+        assert "reasoning_steps" in result
+        assert "Some text before" not in result
+        assert "and after" not in result
+
+    def test_clearing_context_no_braces(self):
+        """Test _clearing_context returns original content if no braces
+        found."""
+        instantiator = ToolInstantiator(ReasoningTool)
+        content = "no json here"
+
+        result = instantiator._clearing_context(content)
+
+        assert result == content
+
+    def test_clearing_context_only_opening_brace(self):
+        """Test _clearing_context handles case with only opening brace."""
+        instantiator = ToolInstantiator(ReasoningTool)
+        content = "text { incomplete json"
+
+        result = instantiator._clearing_context(content)
+
+        assert result == content
+
+    def test_build_model_with_text_around_json(self):
+        """Test build_model extracts JSON from text with surrounding
+        content."""
+        instantiator = ToolInstantiator(ReasoningTool)
+        json_data = {
+            "reasoning_steps": ["step1", "step2"],
+            "current_situation": "test",
+            "plan_status": "ok",
+            "enough_data": False,
+            "remaining_steps": ["next"],
+            "task_completed": False,
+        }
+        content = f"Here is the JSON: {json.dumps(json_data)} and some text after"
+
+        result = instantiator.build_model(content)
+
+        assert isinstance(result, ReasoningTool)
+        assert result.reasoning_steps == ["step1", "step2"]
+
+    def test_format_json_error_with_context(self):
+        """Test _format_json_error includes context around error position."""
+        instantiator = ToolInstantiator(ReasoningTool)
+        # Create invalid JSON with extra data
+        content = '{"field": "value"} extra data here'
+        try:
+            json.loads(content)
+        except JSONDecodeError as e:
+            error_msg = instantiator._format_json_error(e, content)
+
+            assert "JSON parse error" in error_msg
+            assert "position" in error_msg
+            assert "Context:" in error_msg
+            assert "extra data" in error_msg or "value" in error_msg
