@@ -75,7 +75,10 @@ class NextStepToolsBuilder:
         return create_model(
             "NextStepTools",
             __base__=NextStepToolStub,
-            function=(cls._create_tool_types_union(tools_list), Field()),
+            function=(
+                cls._create_tool_types_union(tools_list),
+                Field(description="Select and fill parameters of the appropriate tool for the next step"),
+            ),
         )
 
     @classmethod
@@ -83,12 +86,6 @@ class NextStepToolsBuilder:
         """Build a model for selecting tool name."""
         # Extract tool names and descriptions
         tool_names = [tool.tool_name for tool in tools_list]
-        tool_descriptions = [tool.description for tool in tools_list]
-
-        description_lines = ["Choose the name for best tool to use from the list. Available tools:"]
-        for name, desc in zip(tool_names, tool_descriptions):
-            description_lines.append(f"- {name}: {desc}")
-        description_text = "\n".join(description_lines)
 
         if len(tool_names) == 1:
             literal_type = Literal[tool_names[0]]
@@ -102,7 +99,7 @@ class NextStepToolsBuilder:
         model_class = create_model(
             "NextStepToolSelector",
             __base__=ToolNameSelectorStub,
-            function_name_choice=(literal_type, Field(description=description_text)),
+            function_name_choice=(literal_type, Field(description="Choose the name for the best tool to use")),
         )
         model_class.tool_name = "nextsteptoolselector"  # type: ignore
         return model_class
