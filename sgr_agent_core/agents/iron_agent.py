@@ -141,6 +141,8 @@ TOOL GENERATION DEBUG
 
     async def _prepare_tools(self) -> Type[ToolNameSelectorStub]:
         """Prepare available tools for the current agent state and progress."""
+        if self._context.iteration >= self.config.execution.max_iterations:
+            raise RuntimeError("Max iterations reached")
         return NextStepToolsBuilder.build_NextStepToolSelector(self.toolkit)
 
     async def _reasoning_phase(self) -> ReasoningTool:
@@ -169,7 +171,6 @@ TOOL GENERATION DEBUG
         """Select tool based on reasoning phase result."""
         messages = await self._prepare_context()
 
-        # Extract tool name from reasoning (it's already selected in reasoning phase)
         tool_name = reasoning.function_name_choice  # type: ignore
 
         # Find tool class by name
@@ -211,8 +212,6 @@ TOOL GENERATION DEBUG
                 ],
             }
         )
-
-        # Add to streaming
         self.streaming_generator.add_tool_call(
             f"{self._context.iteration}-action", tool.tool_name, tool.model_dump_json()
         )
