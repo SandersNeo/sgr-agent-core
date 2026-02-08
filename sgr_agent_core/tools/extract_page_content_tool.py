@@ -34,6 +34,9 @@ class ExtractPageContentTool(BaseTool):
         - For date/number questions, cross-check extracted values with search snippets
     """
 
+    config_model = SearchConfig
+    base_config_attr = "search"
+
     reasoning: str = Field(description="Why extract these specific pages")
     urls: list[str] = Field(description="List of URLs to extract full content from", min_length=1, max_length=5)
 

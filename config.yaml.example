@@ -107,7 +107,10 @@ agents:
           url: "https://mcp.deepwiki.com/mcp"
 
     # Tools: names, or dicts with "name" and optional kwargs (e.g. search settings per tool)
-    # Example: {"name": "web_search_tool", "max_results": 15, "max_searches": 6}
+    # Example:
+    # - web_search_tool:
+    #    max_results: 15
+    #    max_searches: 6
     tools:
       - "web_search_tool"
       - "extract_page_content_tool"

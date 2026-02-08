@@ -61,10 +61,8 @@ class ResearchSGRAgentNoReporting(SGRAgent):
             tools -= {
                 ClarificationTool,
             }
-        max_searches = self.tool_configs.get(WebSearchTool.tool_name, {}).get("max_searches") or (
-            self.config.search.max_searches if self.config.search else 4
-        )
-        if self._context.searches_used >= max_searches:
+        search_config = self.get_tool_config(WebSearchTool)
+        if self._context.searches_used >= search_config.max_searches:
             tools -= {
                 WebSearchTool,
             }
@@ -106,10 +104,8 @@ class ResearchToolCallingAgentNoReporting(ToolCallingAgent):
             tools -= {
                 ClarificationTool,
             }
-        max_searches = self.tool_configs.get(WebSearchTool.tool_name, {}).get("max_searches") or (
-            self.config.search.max_searches if self.config.search else 4
-        )
-        if self._context.searches_used >= max_searches:
+        search_config = self.get_tool_config(WebSearchTool)
+        if self._context.searches_used >= search_config.max_searches:
             tools -= {
                 WebSearchTool,
             }
@@ -152,10 +148,8 @@ class ResearchSGRToolCallingAgentNoReporting(SGRToolCallingAgent):
             tools -= {
                 ClarificationTool,
             }
-        max_searches = self.tool_configs.get(WebSearchTool.tool_name, {}).get("max_searches") or (
-            self.config.search.max_searches if self.config.search else 4
-        )
-        if self._context.searches_used >= max_searches:
+        search_config = self.get_tool_config(WebSearchTool)
+        if self._context.searches_used >= search_config.max_searches:
             tools -= {
                 WebSearchTool,
             }

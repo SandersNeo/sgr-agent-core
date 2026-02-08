@@ -44,6 +44,9 @@ class WebSearchTool(BaseTool):
         - If the snippet directly answers the question, you may not need to extract the full page
     """
 
+    config_model = SearchConfig
+    base_config_attr = "search"
+
     reasoning: str = Field(description="Why this search is needed and what to expect")
     query: str = Field(description="Search query in same language as user request")
     max_results: int = Field(
