@@ -43,6 +43,4 @@ class ReasoningTool(BaseTool):
     task_completed: bool = Field(description="Is the research task finished?")
 
     async def __call__(self, *args, **kwargs):
-        return self.model_dump_json(
-            indent=2,
-        )
+        return ""
