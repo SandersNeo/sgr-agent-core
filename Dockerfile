@@ -33,9 +33,9 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
     PATH="/usr/local/bin:$PATH"
 
-# Install runtime dependencies
+# Install runtime dependencies (bubblewrap for RunCommandTool safe mode)
 RUN apt update \
- && apt install -y --no-install-recommends curl ca-certificates \
+ && apt install -y --no-install-recommends curl ca-certificates bubblewrap \
  && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user

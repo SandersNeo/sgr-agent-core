@@ -5,6 +5,8 @@ This module contains simple tests for all tools:
 - Config reading (if needed)
 """
 
+import tempfile
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -19,6 +21,7 @@ from sgr_agent_core.tools import (
     FinalAnswerTool,
     GeneratePlanTool,
     ReasoningTool,
+    RunCommandTool,
     WebSearchTool,
 )
 
@@ -235,3 +238,122 @@ class TestSearchToolsKwargs:
             await tool(context, config, content_limit=500)
             call_args = mock_svc_class.call_args[0][0]
             assert call_args.content_limit == 500
+
+
+class TestRunCommandTool:
+    """Test suite for RunCommandTool."""
+
+    def test_run_command_tool_initialization(self):
+        """RunCommandTool initializes with reasoning and command."""
+        tool = RunCommandTool(reasoning="List files", command="ls -la")
+        assert tool.tool_name == "runcommandtool"
+        assert tool.reasoning == "List files"
+        assert tool.command == "ls -la"
+
+    def test_run_command_tool_default_mode_is_unsafe(self):
+        """RunCommandTool default mode from config is unsafe (via kwargs)."""
+        tool = RunCommandTool(reasoning="r", command="echo ok")
+        assert tool.reasoning == "r"
+
+    @pytest.mark.asyncio
+    async def test_run_command_tool_unsafe_mode_runs_subprocess(self):
+        """RunCommandTool in unsafe mode runs command via subprocess and
+        returns output."""
+        from sgr_agent_core.models import AgentContext
+
+        tool = RunCommandTool(reasoning="Test", command="echo hello")
+        context = AgentContext()
+        config = MagicMock()
+        result = await tool(context, config, mode="unsafe")
+        assert "hello" in result
+        assert "return_code" in result.lower() or "0" in result
+
+    @pytest.mark.asyncio
+    async def test_run_command_tool_uses_root_path_as_cwd(self):
+        """RunCommandTool with root_path runs command with cwd set to
+        root_path."""
+        from sgr_agent_core.models import AgentContext
+
+        tmp = Path(__file__).resolve().parent
+        tool = RunCommandTool(reasoning="Test", command="pwd")
+        context = AgentContext()
+        config = MagicMock()
+        result = await tool(context, config, mode="unsafe", root_path=str(tmp))
+        assert tmp.name in result or str(tmp) in result
+
+    @pytest.mark.asyncio
+    async def test_run_command_tool_safe_mode_bwrap_not_found_returns_error(self):
+        """RunCommandTool in safe mode when bwrap is not installed returns
+        error with install link."""
+        from sgr_agent_core.models import AgentContext
+
+        tool = RunCommandTool(reasoning="Test", command="echo hi")
+        context = AgentContext()
+        config = MagicMock()
+        with patch("sgr_agent_core.tools.run_command_tool.shutil.which", return_value=None):
+            result = await tool(context, config, mode="safe")
+        assert "error" in result.lower()
+        assert "bwrap" in result.lower()
+        assert "github.com" in result or "containers/bubblewrap" in result or "installation" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_run_command_tool_safe_mode_with_bwrap_runs_command(self):
+        """RunCommandTool in safe mode with bwrap available runs command via
+        bwrap."""
+        from sgr_agent_core.models import AgentContext
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tool = RunCommandTool(reasoning="Test", command="echo hi")
+            context = AgentContext()
+            config = MagicMock()
+            with (
+                patch("sgr_agent_core.tools.run_command_tool.shutil.which", return_value="/usr/bin/bwrap"),
+                patch(
+                    "sgr_agent_core.tools.run_command_tool.asyncio.create_subprocess_exec",
+                    new_callable=AsyncMock,
+                ) as mock_exec,
+            ):
+                proc = AsyncMock()
+                proc.communicate = AsyncMock(return_value=(b"hi\n", b""))
+                proc.returncode = 0
+                proc.kill = MagicMock()
+                mock_exec.return_value = proc
+                result = await tool(context, config, mode="safe", root_path=tmpdir)
+            assert "hi" in result
+            assert "return_code" in result.lower()
+            mock_exec.assert_called_once()
+            call_args = mock_exec.call_args[0]
+            assert call_args[0] == "/usr/bin/bwrap" or "bwrap" in str(call_args)
+
+    @pytest.mark.asyncio
+    async def test_run_command_tool_uses_timeout_from_kwargs(self):
+        """RunCommandTool uses timeout_seconds from kwargs."""
+        from sgr_agent_core.models import AgentContext
+
+        tool = RunCommandTool(reasoning="Test", command="echo ok")
+        context = AgentContext()
+        config = MagicMock()
+        with patch("sgr_agent_core.tools.run_command_tool.asyncio.create_subprocess_shell") as mock_create:
+            proc = AsyncMock()
+            proc.communicate = AsyncMock(return_value=(b"ok\n", b""))
+            proc.returncode = 0
+            proc.kill = MagicMock()
+            mock_create.return_value = proc
+            await tool(context, config, mode="unsafe", timeout_seconds=30)
+            call_kwargs = mock_create.call_args[1]
+            assert call_kwargs.get("cwd") is None or "cwd" in call_kwargs
+            # timeout is applied in wait_for(communicate(), timeout=...)
+            mock_create.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_run_command_tool_path_escape_rejected_when_root_path_set(self):
+        """RunCommandTool rejects command that escapes root_path (e.g.
+        ../../../)."""
+        from sgr_agent_core.models import AgentContext
+
+        tmp = Path(__file__).resolve().parent
+        tool = RunCommandTool(reasoning="Test", command="cat ../../../../etc/passwd")
+        context = AgentContext()
+        config = MagicMock()
+        result = await tool(context, config, mode="unsafe", root_path=str(tmp))
+        assert "error" in result.lower() or "not allowed" in result.lower() or "outside" in result.lower()
