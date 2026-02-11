@@ -26,7 +26,8 @@ BWRAP_INSTALL_URL = "https://github.com/containers/bubblewrap#installation"
 
 
 class RunCommandToolConfig(BaseModel):
-    """Config model for RunCommandTool (built from kwargs only, no global section)."""
+    """Config model for RunCommandTool (built from kwargs only, no global
+    section)."""
 
     root_path: str | None = None
     mode: str = "unsafe"
@@ -34,7 +35,8 @@ class RunCommandToolConfig(BaseModel):
 
 
 def _validate_command_paths(command: str, root_path: Path) -> str | None:
-    """If any path-like token in command escapes root_path, return error message; else None."""
+    """If any path-like token in command escapes root_path, return error
+    message; else None."""
     try:
         parts = shlex.split(command)
     except ValueError:
@@ -114,7 +116,8 @@ class RunCommandTool(BaseTool):
         return await self._run_unsafe(cfg)
 
     async def _run_safe(self, cfg: RunCommandToolConfig) -> str:
-        """Execute via bwrap; require bwrap in PATH and return error with install link if missing."""
+        """Execute via bwrap; require bwrap in PATH and return error with
+        install link if missing."""
         bwrap_path = shutil.which("bwrap")
         if not bwrap_path:
             return (
@@ -138,9 +141,7 @@ class RunCommandTool(BaseTool):
             logger.exception("RunCommandTool bwrap exec failed")
             return f"Error: {e!s}"
         try:
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(), timeout=cfg.timeout_seconds
-            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=cfg.timeout_seconds)
         except asyncio.TimeoutError:
             process.kill()
             await process.wait()
@@ -150,7 +151,8 @@ class RunCommandTool(BaseTool):
         return self._format_result(out, err, process.returncode or 0)
 
     async def _run_unsafe(self, cfg: RunCommandToolConfig) -> str:
-        """Execute via OS subprocess with optional root_path as cwd and path validation."""
+        """Execute via OS subprocess with optional root_path as cwd and path
+        validation."""
         cwd = None
         if cfg.root_path:
             root = Path(cfg.root_path).expanduser().resolve()
@@ -172,9 +174,7 @@ class RunCommandTool(BaseTool):
                 cwd=cwd,
             )
             try:
-                stdout, stderr = await asyncio.wait_for(
-                    process.communicate(), timeout=cfg.timeout_seconds
-                )
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=cfg.timeout_seconds)
             except asyncio.TimeoutError:
                 process.kill()
                 await process.wait()
