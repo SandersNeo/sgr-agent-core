@@ -357,3 +357,116 @@ class TestRunCommandTool:
         config = MagicMock()
         result = await tool(context, config, mode="unsafe", root_path=str(tmp))
         assert "error" in result.lower() or "not allowed" in result.lower() or "outside" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_run_command_tool_include_allows_command(self):
+        """RunCommandTool with include allows only listed commands."""
+        from sgr_agent_core.models import AgentContext
+
+        tool = RunCommandTool(reasoning="Test", command="echo hello")
+        context = AgentContext()
+        config = MagicMock()
+        # echo should be allowed if in include
+        result = await tool(context, config, mode="unsafe", include=["echo", "/bin/echo"])
+        assert "hello" in result
+
+    @pytest.mark.asyncio
+    async def test_run_command_tool_include_rejects_not_listed_command(self):
+        """RunCommandTool with include rejects commands not in the list."""
+        from sgr_agent_core.models import AgentContext
+
+        tool = RunCommandTool(reasoning="Test", command="rm /tmp/file")
+        context = AgentContext()
+        config = MagicMock()
+        result = await tool(context, config, mode="unsafe", include=["echo", "ls"])
+        assert "error" in result.lower()
+        assert "not in include" in result.lower() or "not allowed" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_run_command_tool_exclude_rejects_command(self):
+        """RunCommandTool with exclude rejects excluded commands."""
+        from sgr_agent_core.models import AgentContext
+
+        tool = RunCommandTool(reasoning="Test", command="rm /tmp/file")
+        context = AgentContext()
+        config = MagicMock()
+        result = await tool(context, config, mode="unsafe", exclude=["rm", "/usr/bin/rm"])
+        assert "error" in result.lower()
+        assert "excluded" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_run_command_tool_include_and_exclude_work_together(self):
+        """RunCommandTool with both include and exclude: exclude takes precedence."""
+        from sgr_agent_core.models import AgentContext
+
+        tool = RunCommandTool(reasoning="Test", command="rm /tmp/file")
+        context = AgentContext()
+        config = MagicMock()
+        # rm is in include but also in exclude -> should be rejected
+        result = await tool(context, config, mode="unsafe", include=["rm", "ls"], exclude=["rm"])
+        assert "error" in result.lower()
+        assert "excluded" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_run_command_tool_safe_mode_with_include_uses_overlayfs_manager(self):
+        """RunCommandTool in safe mode with include uses OverlayFSManager
+        mounts."""
+        from sgr_agent_core.models import AgentContext
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tool = RunCommandTool(reasoning="Test", command="echo hi")
+            context = AgentContext()
+            config = MagicMock()
+            with (
+                patch("sgr_agent_core.tools.run_command_tool.shutil.which", return_value="/usr/bin/bwrap"),
+                patch(
+                    "sgr_agent_core.tools.run_command_tool.asyncio.create_subprocess_exec",
+                    new_callable=AsyncMock,
+                ) as mock_exec,
+                patch(
+                    "sgr_agent_core.services.overlayfs_manager.OverlayFSManager.get_overlay_mounts",
+                    return_value={"/usr/bin": "/tmp/merged_usr_bin"},
+                ) as mock_get_mounts,
+            ):
+                proc = AsyncMock()
+                proc.communicate = AsyncMock(return_value=(b"hi\n", b""))
+                proc.returncode = 0
+                proc.kill = MagicMock()
+                mock_exec.return_value = proc
+                # Include only echo (should be in /usr/bin or /bin)
+                result = await tool(context, config, mode="safe", root_path=tmpdir, include=["echo"])
+            assert "hi" in result
+            mock_exec.assert_called_once()
+            mock_get_mounts.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_run_command_tool_safe_mode_with_exclude_uses_overlayfs_manager(self):
+        """RunCommandTool in safe mode with exclude uses OverlayFSManager
+        mounts."""
+        from sgr_agent_core.models import AgentContext
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tool = RunCommandTool(reasoning="Test", command="ls")
+            context = AgentContext()
+            config = MagicMock()
+            with (
+                patch("sgr_agent_core.tools.run_command_tool.shutil.which", return_value="/usr/bin/bwrap"),
+                patch(
+                    "sgr_agent_core.tools.run_command_tool.asyncio.create_subprocess_exec",
+                    new_callable=AsyncMock,
+                ) as mock_exec,
+                patch(
+                    "sgr_agent_core.services.overlayfs_manager.OverlayFSManager.get_overlay_mounts",
+                    return_value={"/usr/bin": "/tmp/merged_usr_bin"},
+                ) as mock_get_mounts,
+                patch("sgr_agent_core.tools.run_command_tool._check_allowed", return_value=None),
+            ):
+                proc = AsyncMock()
+                proc.communicate = AsyncMock(return_value=(b"ls\n", b""))
+                proc.returncode = 0
+                proc.kill = MagicMock()
+                mock_exec.return_value = proc
+                # Include ls but exclude rm (both in /usr/bin)
+                result = await tool(context, config, mode="safe", root_path=tmpdir, include=["ls"], exclude=["rm"])
+            assert "ls" in result
+            mock_get_mounts.assert_called_once()

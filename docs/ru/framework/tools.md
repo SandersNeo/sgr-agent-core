@@ -569,8 +569,8 @@ execution:
 **Вспомогательные тулы:**
 - `WebSearchTool` - Для функциональности веб-поиска
 - `ExtractPageContentTool` - Для извлечения содержимого с веб-страниц
-- `RunCommandTool` - Выполнение shell-команд в режиме unsafe (субпроцесс ОС) или safe (песочница Bubblewrap/bwrap)
+- `RunCommandTool` - Выполнение shell-команд в режиме unsafe (субпроцесс ОС) или safe (песочница Bubblewrap/bwrap + OverlayFS)
 
-**RunCommandTool** настраивается через секцию `tools:`. Параметры: `root_path` (рабочая директория), `mode` (`"safe"` или `"unsafe"`, по умолчанию `"unsafe"`), `timeout_seconds` (по умолчанию 60). Режим safe использует Bubblewrap (bwrap) на Linux; bwrap должен быть установлен (например, `apt install bubblewrap`). Если bwrap не найден, тул возвращает ошибку со ссылкой на инструкцию по установке. Подробнее: [спецификация RunCommandTool и safe mode](../specs/run-command-and-sandbox.md).
+**RunCommandTool** настраивается через секцию `tools:`. Параметры: `root_path` (рабочая директория), `mode` (`"safe"` или `"unsafe"`, по умолчанию `"unsafe"`), `timeout_seconds` (по умолчанию 60), `include` (опциональный список разрешённых команд/путей), `exclude` (опциональный список запрещённых команд/путей). Режим safe использует Bubblewrap (bwrap) в сочетании с OverlayFS на Linux для точного исключения файлов через whiteout-файлы; bwrap должен быть установлен (например, `apt install bubblewrap`). Если bwrap не найден, тул возвращает ошибку со ссылкой на инструкцию по установке. При задании `include`/`exclude` OverlayFS создаёт отфильтрованные представления файловой системы, где исключённые бинарники скрыты через whiteout-файлы. Подробнее: [спецификация RunCommandTool и safe mode](../../specs/run-command-and-sandbox.md).
 
 Все эти тулы можно использовать по имени в конфигурациях агентов (см. раздел [Конфигурация тулов](#конфигурация-тулов) выше).
