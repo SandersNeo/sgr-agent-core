@@ -1,6 +1,7 @@
 """OverlayFS manager for RunCommandTool filesystem isolation.
 
-Manages OverlayFS mounts created at server startup and unmounted at shutdown.
+Manages OverlayFS mounts created at server startup and unmounted at
+shutdown.
 """
 
 import logging
@@ -32,9 +33,7 @@ class OverlayFSManager:
         return cls._instance
 
     @classmethod
-    def initialize_overlayfs(
-        cls, allowed_binaries: set[str], excluded_binaries: set[str]
-    ) -> dict[str, str]:
+    def initialize_overlayfs(cls, allowed_binaries: set[str], excluded_binaries: set[str]) -> dict[str, str]:
         """Initialize OverlayFS mounts for given binaries.
 
         Args:
@@ -130,7 +129,8 @@ class OverlayFSManager:
 
     @classmethod
     def cleanup(cls) -> None:
-        """Unmount all overlay filesystems and clean up temporary directories."""
+        """Unmount all overlay filesystems and clean up temporary
+        directories."""
         for merged_path in list(cls._overlay_mounts.values()):
             try:
                 subprocess.run(["umount", merged_path], capture_output=True, check=False)
