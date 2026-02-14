@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, ClassVar, Self
 
 from fastmcp import Client
 from pydantic import BaseModel
@@ -61,3 +61,7 @@ class MCPBaseTool(BaseTool):
         except Exception as e:
             logger.error(f"Error processing MCP tool {self.tool_name}: {e}")
             return f"Error: {e}"
+
+    @classmethod
+    def model_validate_json(cls, json_data: str | bytes | bytearray, **kwargs) -> Self:
+        return super().model_validate_json(json_data=json_data or "{}", **kwargs)
