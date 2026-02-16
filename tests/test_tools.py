@@ -10,6 +10,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from sgr_agent_core.agent_definition import SearchConfig
+from sgr_agent_core.models import AgentContext, SourceData
+from sgr_agent_core.services.tavily_search import TavilySearchService
 from sgr_agent_core.tools import (
     AdaptPlanTool,
     AnswerTool,
@@ -218,6 +220,92 @@ class TestSearchToolsKwargs:
             await tool(context, config)
             call_args = mock_svc_class.call_args[0][0]
             assert call_args.max_results == 10
+
+    @pytest.mark.asyncio
+    async def test_web_search_tool_with_offset(self):
+        """WebSearchTool with offset fetches offset+max_results from Tavily and
+        slices."""
+        tool = WebSearchTool(reasoning="r", query="test", max_results=3, offset=2)
+        context = AgentContext()
+        config = MagicMock()
+        config.search = SearchConfig(tavily_api_key="k", max_results=10)
+
+        mock_sources = [
+            SourceData(number=i, url=f"https://example.com/{i}", title=f"Result {i}", snippet=f"Snippet {i}")
+            for i in range(5)
+        ]
+
+        with patch("sgr_agent_core.tools.web_search_tool.TavilySearchService") as mock_svc_class:
+            mock_svc = AsyncMock()
+            mock_svc.search = AsyncMock(return_value=mock_sources)
+            mock_svc_class.return_value = mock_svc
+            mock_svc_class.rearrange_sources = TavilySearchService.rearrange_sources
+
+            result = await tool(context, config)
+
+            # Tavily should receive max_results = 3 + 2 = 5
+            mock_svc.search.assert_called_once_with(query="test", max_results=5, include_raw_content=False)
+            # After slicing [2:], 3 sources should remain
+            assert len(context.searches) == 1
+            assert len(context.searches[0].citations) == 3
+            assert "Result 2" in result
+            assert "Result 0" not in result
+
+    @pytest.mark.asyncio
+    async def test_web_search_tool_offset_default_zero(self):
+        """WebSearchTool without offset behaves identically to current
+        logic."""
+        tool = WebSearchTool(reasoning="r", query="test", max_results=3)
+        assert tool.offset == 0
+
+        context = AgentContext()
+        config = MagicMock()
+        config.search = SearchConfig(tavily_api_key="k", max_results=10)
+
+        mock_sources = [
+            SourceData(number=i, url=f"https://example.com/{i}", title=f"Result {i}", snippet=f"Snippet {i}")
+            for i in range(3)
+        ]
+
+        with patch("sgr_agent_core.tools.web_search_tool.TavilySearchService") as mock_svc_class:
+            mock_svc = AsyncMock()
+            mock_svc.search = AsyncMock(return_value=mock_sources)
+            mock_svc_class.return_value = mock_svc
+            mock_svc_class.rearrange_sources = TavilySearchService.rearrange_sources
+
+            await tool(context, config)
+
+            # Tavily should receive max_results = 3 (no offset added)
+            mock_svc.search.assert_called_once_with(query="test", max_results=3, include_raw_content=False)
+            assert len(context.searches[0].citations) == 3
+
+    @pytest.mark.asyncio
+    async def test_web_search_tool_offset_exceeds_results(self):
+        """WebSearchTool with offset exceeding available results returns empty
+        list gracefully."""
+        tool = WebSearchTool(reasoning="r", query="test", max_results=3, offset=10)
+        context = AgentContext()
+        config = MagicMock()
+        config.search = SearchConfig(tavily_api_key="k", max_results=20)
+
+        mock_sources = [
+            SourceData(number=i, url=f"https://example.com/{i}", title=f"Result {i}", snippet=f"Snippet {i}")
+            for i in range(5)
+        ]
+
+        with patch("sgr_agent_core.tools.web_search_tool.TavilySearchService") as mock_svc_class:
+            mock_svc = AsyncMock()
+            mock_svc.search = AsyncMock(return_value=mock_sources)
+            mock_svc_class.return_value = mock_svc
+            mock_svc_class.rearrange_sources = TavilySearchService.rearrange_sources
+
+            result = await tool(context, config)
+
+            # Tavily should receive max_results = 3 + 10 = 13
+            mock_svc.search.assert_called_once_with(query="test", max_results=13, include_raw_content=False)
+            # After slicing [10:] on 5 results, empty list
+            assert len(context.searches[0].citations) == 0
+            assert "Search Query: test" in result
 
     @pytest.mark.asyncio
     async def test_extract_page_content_tool_uses_content_limit_from_kwargs(self):

@@ -55,6 +55,14 @@ class WebSearchTool(BaseTool):
         ge=1,
         le=10,
     )
+    offset: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Number of results to skip from the beginning."
+            " Use for pagination: first call offset=0, next call offset=5, etc."
+        ),
+    )
 
     async def __call__(self, context: AgentContext, config: AgentConfig, **kwargs: Any) -> str:
         """Execute web search using TavilySearchService.
@@ -71,11 +79,17 @@ class WebSearchTool(BaseTool):
         self._search_service = TavilySearchService(search_config)
 
         max_results_limit = search_config.max_results
+        effective_limit = min(self.max_results, max_results_limit)
+        fetch_count = effective_limit + self.offset
+
         sources = await self._search_service.search(
             query=self.query,
-            max_results=min(self.max_results, max_results_limit),
+            max_results=fetch_count,
             include_raw_content=False,
         )
+
+        if self.offset:
+            sources = sources[self.offset :]
 
         sources = TavilySearchService.rearrange_sources(sources, starting_number=len(context.sources) + 1)
 
