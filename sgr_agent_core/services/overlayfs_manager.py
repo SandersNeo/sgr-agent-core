@@ -12,6 +12,13 @@ import tempfile
 from pathlib import Path
 from typing import ClassVar
 
+from sgr_agent_core.agent_config import GlobalConfig
+from sgr_agent_core.tools.run_command_tool import (
+    RunCommandToolConfig,
+    _collect_allowed_binaries,
+    _resolve_command_path,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -126,6 +133,54 @@ class OverlayFSManager:
             Dict mapping original directory -> merged mount path
         """
         return cls._overlay_mounts.copy()
+
+    @classmethod
+    def initialize_from_config(cls) -> None:
+        """Initialize OverlayFS for RunCommandTool from GlobalConfig.
+
+        Reads RunCommandTool configuration from
+        GlobalConfig.tools.run_command_tool and initializes OverlayFS
+        mounts if mode is safe and include/exclude are set.
+        """
+        try:
+            config = GlobalConfig()
+            runcommand_config = config.tools.get("run_command_tool") or config.tools.get("runcommandtool")
+            if not runcommand_config:
+                return
+
+            # Get tool config
+            tool_config_dict = runcommand_config.tool_kwargs() if hasattr(runcommand_config, "tool_kwargs") else {}
+            tool_config = RunCommandToolConfig(**tool_config_dict)
+
+            # Only initialize if include/exclude are set and mode is safe
+            if tool_config.mode != "safe" or (not tool_config.include and not tool_config.exclude):
+                return
+
+            # Collect binaries
+            allowed_binaries, _ = _collect_allowed_binaries(tool_config.include, tool_config.exclude)
+            excluded_binaries = set()
+            if tool_config.exclude:
+                for excl_item in tool_config.exclude:
+                    excl_path = _resolve_command_path(excl_item) if "/" not in excl_item else None
+                    if not excl_path:
+                        try:
+                            p = Path(excl_item).resolve()
+                            if p.is_file() or p.exists():
+                                excl_path = str(p)
+                        except Exception:
+                            continue
+                    if excl_path:
+                        try:
+                            if Path(excl_path).exists() and Path(excl_path).is_file():
+                                excluded_binaries.add(excl_path)
+                        except Exception:
+                            pass
+
+            if allowed_binaries or excluded_binaries:
+                mounts = cls.initialize_overlayfs(allowed_binaries, excluded_binaries)
+                logger.info("Initialized OverlayFS for RunCommandTool: %d mounts", len(mounts))
+        except Exception:
+            logger.exception("Failed to initialize OverlayFS for RunCommandTool")
 
     @classmethod
     def cleanup(cls) -> None:
