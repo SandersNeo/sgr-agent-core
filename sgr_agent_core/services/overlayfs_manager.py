@@ -158,22 +158,23 @@ class OverlayFSManager:
     def initialize_from_config(cls) -> None:
         """Initialize OverlayFS for RunCommandTool from GlobalConfig.
 
-        Checks global tools and every agent's tools; if RunCommandTool
-        is used anywhere with mode safe and include/exclude set,
-        initializes OverlayFS mounts once at startup.
+        If RunCommandTool is used with mode safe anywhere (global or any
+        agent), runs overlay init once at startup.
+        include_paths/exclude_paths may be unset; then no overlay mounts
+        are created but manager is ready.
         """
         try:
             config = GlobalConfig()
             candidates = _get_run_command_config_candidates(config)
             tool_config = None
             for c in candidates:
-                if c.mode == "safe" and (c.include_paths or c.exclude_paths):
+                if c.mode == "safe":
                     tool_config = c
                     break
             if not tool_config:
                 return
 
-            # Collect include/exclude paths
+            # Collect include/exclude paths (may be empty if user did not set them)
             include_paths, _ = _collect_allowed_binaries(tool_config.include_paths, tool_config.exclude_paths)
             exclude_paths: set[str] = set()
             if tool_config.exclude_paths:
@@ -193,8 +194,8 @@ class OverlayFSManager:
                         except Exception:
                             pass
 
-            if include_paths or exclude_paths:
-                mounts = cls.initialize_overlayfs(include_paths, exclude_paths)
+            mounts = cls.initialize_overlayfs(include_paths, exclude_paths)
+            if mounts:
                 logger.info("Initialized OverlayFS for RunCommandTool: %d mounts", len(mounts))
         except Exception:
             logger.exception("Failed to initialize OverlayFS for RunCommandTool")

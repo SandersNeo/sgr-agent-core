@@ -6,6 +6,19 @@ alwaysApply: true
 
 # Workflow Rules for Bug Fixes and New Features
 
+## Mandatory Flow (Use Always)
+
+For **new features** follow this order strictly. Do not skip steps.
+
+1. **Plan** - write what to do for the new feature
+2. **Tests (red)** - write tests for the feature, run them, ensure they fail
+3. **Code** - implement the feature
+4. **Tests (green)** - run the new tests, ensure they pass
+5. **All tests** - run full test suite, ensure everything passes
+6. **Documentation** - write docs and examples if needed
+7. **Linter** - run linter, fix all issues
+8. **Report** - write what was done
+
 ## Virtual Environment
 
 **IMPORTANT**: Virtual environment is located in `.venv` directory. Always activate it before running tests or commands:
@@ -34,69 +47,63 @@ source .venv/Scripts/activate
 
 ### Mandatory Workflow for New Features
 
-**CRITICALLY IMPORTANT**: When user asks to implement a new feature (using words "фича", "feature", "новая функция", "добавить", "implement", "add"), **always** apply TDD approach and follow this strict workflow:
+**CRITICALLY IMPORTANT**: When user asks to implement a new feature (using words "фича", "feature", "новая функция", "добавить", "implement", "add"), **always** use the flow from "Mandatory Flow" above.
 
-**Do not skip any step!** Always follow order: write test (red) → verify test fails → implement feature → test (green) → run all tests → run linter → update documentation → report.
+**Do not skip any step!** Order: plan → tests (red) → code → tests (green) → all tests → documentation → linter → report.
 
 ### Step-by-step Process for New Features
 
-1. **Write test first**
-   - Create test in corresponding file `tests/test_*.py`
-   - Test must **fail** (red) because feature doesn't exist yet
-   - Test must clearly describe expected behavior
-   - Make sure test actually fails for the right reason
-   - Run test:
+1. **Plan**
+   - Write what to do for the new feature (scope, steps, files to touch)
+   - Clarify expected behavior and edge cases
+   - Fix the order of work before writing code or tests
+
+2. **Write tests and verify they fail (red)**
+   - Create tests in corresponding file `tests/test_*.py`
+   - Tests must **fail** (red) because feature does not exist yet
+   - Tests must clearly describe expected behavior
+   - Run tests and ensure they fail for the right reason:
      - **Linux/macOS**: `source .venv/bin/activate && pytest tests/test_*.py::test_name -v`
      - **Windows**: `.venv\Scripts\activate && pytest tests/test_*.py::test_name -v`
+   - If tests pass unexpectedly, review test logic
 
-2. **Verify test fails**
-   - Run new test:
-     - **Linux/macOS**: `source .venv/bin/activate && pytest tests/test_*.py::test_name -v`
-     - **Windows**: `.venv\Scripts\activate && pytest tests/test_*.py::test_name -v`
-   - Test must **fail** (red) - this confirms test is correct
-   - If test passes unexpectedly, review test logic
-
-3. **Implement feature**
-   - Write code that implements new feature
+3. **Implement feature (code)**
+   - Write code that implements the new feature
    - Follow rules from @code-style.mdc and @architecture.mdc
    - Use @implementation-order.mdc if adding new classes
    - Implement one class/module at a time
 
-4. **Verify feature works**
-   - Run new test:
+4. **Run new tests and verify they pass (green)**
+   - Run the new tests:
      - **Linux/macOS**: `source .venv/bin/activate && pytest tests/test_*.py::test_name -v`
      - **Windows**: `.venv\Scripts\activate && pytest tests/test_*.py::test_name -v`
-   - Test must **pass** (green)
-   - Make sure feature works as expected
+   - Tests must **pass** (green)
+   - Ensure feature behaves as expected
 
 5. **Run all tests**
    - Execute full test suite:
      - **Linux/macOS**: `source .venv/bin/activate && pytest tests/ -v`
      - **Windows**: `.venv\Scripts\activate && pytest tests/ -v`
-   - Make sure **all tests are green**
-   - If there are failing tests - fix them before proceeding
+   - **All tests must be green**
+   - If any fail, fix them before proceeding
 
-6. **Run linter**
+6. **Documentation and examples (optional)**
+   - Update or add documentation for the new feature if necessary
+   - Add examples if needed
+   - Update API docs if needed
+   - Keep docs clear and complete
+
+7. **Run linter**
    - Execute linter:
      - **Linux/macOS**: `source .venv/bin/activate && pre-commit run -a`
      - **Windows**: `.venv\Scripts\activate && pre-commit run -a`
-   - Fix all linting errors
-   - Make sure linter passes completely
-   - If there are errors, fix them and repeat step 6
+   - Fix all lint issues; repeat until linter passes
 
-7. **Update documentation**
-   - Update relevant documentation files to describe the new feature
-   - Add examples if applicable
-   - Update API documentation if needed
-   - Ensure documentation is clear and complete
-
-8. **Write report**
-   - Brief report of work done
-   - What feature was implemented
-   - Which tests were added/changed
-   - Test run results
-   - Linter results
-   - Documentation updates
+8. **Report**
+   - Short summary of what was done
+   - What was implemented, which tests added/changed
+   - Test and linter results
+   - Documentation changes
 
 ### Report Structure Example for New Features
 
@@ -104,16 +111,18 @@ source .venv/Scripts/activate
 ## Feature: [brief description]
 
 ### Implementation
-1. Added test `test_new_feature` in `tests/test_module.py` (initially red)
-2. Implemented `new_method` in `sgr_agent_core/module.py`
-3. Ran new test - passed (green)
-4. Ran all tests - all green (239 passed)
-5. Ran linter - all checks passed
-6. Updated documentation in `docs/*/framework/feature.md`
+1. Plan: [what was planned - scope, steps]
+2. Added tests in `tests/test_module.py` (initially red), verified they fail
+3. Implemented `new_method` in `sgr_agent_core/module.py`
+4. Ran new tests - passed (green)
+5. Ran all tests - all green (239 passed)
+6. Updated documentation in `docs/*/framework/feature.md`, added example if needed
+7. Ran linter - all checks passed
+8. Report: what was done (this block)
 
 ### Changed Files
 - `sgr_agent_core/module.py` - added new_method implementation
-- `tests/test_module.py` - added test_new_feature test
+- `tests/test_module.py` - added tests for new feature
 - `docs/*/framework/feature.md` - added documentation for new feature
 ```
 
@@ -121,59 +130,43 @@ source .venv/Scripts/activate
 
 ### Mandatory Workflow for Bug Fixes
 
-**CRITICALLY IMPORTANT**: When user asks to fix a bug (using words "баг", "bug", "ошибка", "error", "исправить", "fix"), **always** apply TDD approach and follow this strict workflow:
+**CRITICALLY IMPORTANT**: When fixing a bug, use the same flow as for features. Order: plan → tests (red) → code → tests (green) → all tests → documentation → linter → report.
 
-**Do not skip any step!** Always follow order: test (red) → fix → test (green) → all tests → run linter → update documentation → report.
+**Do not skip any step!**
 
 ### Step-by-step Process for Bug Fixes
 
-1. **Write test reproducing bug**
-   - Create test in corresponding file `tests/test_*.py`
-   - Test must **fail** (red) and reproduce bug
-   - Make sure error actually exists
-   - Run test:
+1. **Plan**
+   - Define what is broken and where to fix it (scope, cause, files to change)
+
+2. **Write test reproducing bug and verify it fails (red)**
+   - Create test in `tests/test_*.py` that reproduces the bug
+   - Test must **fail** (red)
+   - Run test and ensure it fails for the right reason:
      - **Linux/macOS**: `source .venv/bin/activate && pytest tests/test_*.py::test_name -v`
      - **Windows**: `.venv\Scripts\activate && pytest tests/test_*.py::test_name -v`
 
-2. **Fix code**
-   - Write code that fixes bug
-   - Follow rules from @code-style.mdc and @architecture.mdc
-   - Make minimal changes needed to fix the bug
+3. **Fix code**
+   - Implement the fix
+   - Follow @code-style.mdc and @architecture.mdc
+   - Change only what is needed to fix the bug
 
-3. **Verify fix**
-   - Run new test:
-     - **Linux/macOS**: `source .venv/bin/activate && pytest tests/test_*.py::test_name -v`
-     - **Windows**: `.venv\Scripts\activate && pytest tests/test_*.py::test_name -v`
-   - Test must **pass** (green)
-   - Make sure bug is fixed
+4. **Run new test and verify it passes (green)**
+   - Run the new test - it must **pass** (green)
+   - Confirm the bug is fixed
 
-4. **Run all tests**
-   - Execute full run:
-     - **Linux/macOS**: `source .venv/bin/activate && pytest tests/ -v`
-     - **Windows**: `.venv\Scripts\activate && pytest tests/ -v`
-   - Make sure **all tests are green**
-   - If there are failing tests - fix them
+5. **Run all tests**
+   - Run full suite: `pytest tests/ -v`
+   - **All tests must be green**
 
-5. **Run linter**
-   - Execute linter:
-     - **Linux/macOS**: `source .venv/bin/activate && pre-commit run -a`
-     - **Windows**: `.venv\Scripts\activate && pre-commit run -a`
-   - Fix all linting errors
-   - Make sure linter passes completely
-   - If there are errors, fix them and repeat step 5
+6. **Documentation**
+   - Update docs to reflect the fix, add examples if needed
 
-6. **Update documentation**
-   - Update relevant documentation files to describe the bug fix
-   - Add examples if applicable
-   - Update API documentation if needed
-   - Ensure documentation reflects the fix
+7. **Run linter**
+   - `pre-commit run -a`, fix all issues until clean
 
-7. **Write report**
-   - Brief report of work done
-   - What was fixed
-   - Which tests were added/changed
-   - Test run results
-   - Linter results
+8. **Report**
+   - What was fixed, which tests added/changed, test and linter results
 
 ### Report Structure Example for Bug Fixes
 
@@ -184,12 +177,14 @@ source .venv/Scripts/activate
 [Bug description]
 
 ### Solution
-1. Added test `test_bug_reproduction` in `tests/test_module.py` (initially red)
-2. Fixed method `method_name` in `sgr_agent_core/module.py`
-3. Ran new test - passed (green)
-4. Ran all tests - all green (239 passed)
-5. Ran linter - all checks passed
-6. Updated documentation in `docs/en/framework/module.md` to reflect the fix
+1. Plan: [what was broken, where to fix]
+2. Added test in `tests/test_module.py` (red), verified it fails
+3. Fixed `method_name` in `sgr_agent_core/module.py`
+4. Ran new test - passed (green)
+5. Ran all tests - all green
+6. Updated documentation in `docs/en/framework/module.md`
+7. Ran linter - all checks passed
+8. Report: what was done (this block)
 
 ### Changed Files
 - `sgr_agent_core/module.py` - fixed processing logic
@@ -199,25 +194,12 @@ source .venv/Scripts/activate
 
 ## Final Verification Before Reporting
 
-**MANDATORY**: Before writing final report for any work (bug fix or new feature), **always** complete these steps:
+**MANDATORY**: Before writing the final report for any work (bug fix or new feature), complete the full flow. The last steps must be in this order:
 
-1. **Run all tests**:
-   - **Linux/macOS**: `source .venv/bin/activate && pytest tests/ -v`
-   - **Windows**: `.venv\Scripts\activate && pytest tests/ -v`
-   - All tests must pass (green)
-   - No test failures allowed
-
-2. **Run linter**:
-   - **Linux/macOS**: `source .venv/bin/activate && pre-commit run -a`
-   - **Windows**: `.venv\Scripts\activate && pre-commit run -a`
-   - All linting checks must pass
-   - Fix all errors and warnings
-   - Repeat until all checks pass
-
-3. **Only then write report**
-   - Report must include test results
-   - Report must include linter results
-   - Report must confirm all checks passed
+1. **All tests pass** - `pytest tests/ -v`, no failures
+2. **Documentation updated** - docs and examples (if needed) are done
+3. **Linter passes** - `pre-commit run -a`, all checks green
+4. **Then write report** - include what was done, test results, linter results
 
 ## Testing Commands Reference
 

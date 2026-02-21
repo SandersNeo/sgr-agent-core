@@ -106,9 +106,9 @@ class TestOverlayFSManager:
 
             mock_init.assert_called_once()
 
-    def test_initialize_from_config_skips_if_no_include_exclude(self):
-        """OverlayFSManager.initialize_from_config skips if include/exclude not
-        set."""
+    def test_initialize_from_config_runs_when_safe_without_paths(self):
+        """OverlayFSManager.initialize_from_config runs when mode is safe even
+        if include_paths/exclude_paths are not set (init if safe anywhere)."""
         with (
             patch("sgr_agent_core.services.overlayfs_manager.GlobalConfig") as mock_global_config,
             patch("sgr_agent_core.services.overlayfs_manager.OverlayFSManager.initialize_overlayfs") as mock_init,
@@ -122,7 +122,8 @@ class TestOverlayFSManager:
 
             OverlayFSManager.initialize_from_config()
 
-            mock_init.assert_not_called()
+            mock_init.assert_called_once()
+            mock_init.assert_called_with(set(), set())
 
     def test_initialize_from_config_runs_when_run_command_tool_only_in_agent(
         self,

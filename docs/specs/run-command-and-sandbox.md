@@ -45,7 +45,7 @@ Safe mode uses a minimal but useful bwrap setup so the sandbox works out of the 
 
 - **Default filesystem** (when `include_paths` is not set): Read-only bind of `/usr`; symlinks for `/bin`, `/lib`, `/lib64`; `--proc /proc`, `--dev /dev`; a writable **workspace** directory bound as `/workspace` (from `root_path` if set, else a temporary directory or current working directory).
 - **Restricted filesystem** (when `include_paths` or `exclude_paths` are set): Uses **OverlayFS** to create a filtered view of the filesystem:
-  - **Initialization**: OverlayFS mounts are created **once at server startup** if RunCommandTool is used in global `tools:` or in any agent's `tools` with `mode: "safe"` and `include_paths`/`exclude_paths` parameters
+  - **Initialization**: OverlayFS is initialized **once at server startup** if RunCommandTool is used with `mode: "safe"` **anywhere** (global `tools:` or any agent's `tools`). Paths (`include_paths`/`exclude_paths`) may be unset; then no overlay mounts are created but the manager is ready. If paths are set, overlay mounts are created for those directories.
   - **Lower layer**: Original directories (e.g., `/usr/bin`) mounted read-only
   - **Upper layer**: Temporary directory containing whiteout files for exclude_paths
   - **Merged layer**: OverlayFS mount combining lower and upper layers, hiding excluded files
@@ -77,9 +77,9 @@ This gives isolation (namespaces, limited filesystem) without extra configuratio
 - This allows excluding specific files from a directory without excluding the entire directory
 
 **Lifecycle Management:**
-- **Server startup**: OverlayFS mounts are created by `OverlayFSManager` during FastAPI `lifespan` startup phase
-- **Configuration**: RunCommandTool config is taken from global `tools:` or from any agent that uses the tool (first candidate with `mode: "safe"` and `include_paths`/`exclude_paths` wins). If user sets `mode: "unsafe"` everywhere, overlay is not initialized; if **any** config (global or any agent) has `mode: "safe"` with `include_paths`/`exclude_paths`, overlay is initialized.
-- **Initialization**: Only if at least one such config exists (global or per-agent)
+- **Server startup**: OverlayFS is initialized by `OverlayFSManager` during FastAPI `lifespan` startup phase
+- **Configuration**: RunCommandTool config is taken from global `tools:` or from any agent (first candidate with `mode: "safe"` wins). If **everywhere** is `mode: "unsafe"`, overlay is **not** initialized. If **any** config (global or any agent) has `mode: "safe"`, overlay **is** initialized (include_paths/exclude_paths may be unset; then 0 mounts).
+- **Initialization**: Whenever at least one safe config exists (global or per-agent)
 - **Runtime**: Pre-initialized mounts are reused for all command executions (no per-command overhead)
 - **Server shutdown**: All OverlayFS mounts are automatically unmounted and temporary directories cleaned up during FastAPI `lifespan` shutdown phase
 
