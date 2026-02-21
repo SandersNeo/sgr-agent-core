@@ -8,6 +8,7 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import ClassVar
@@ -173,6 +174,13 @@ class OverlayFSManager:
                     break
             if not tool_config:
                 return
+
+            if not tool_config.workspace_path or not str(tool_config.workspace_path).strip():
+                logger.error(
+                    "RunCommandTool is used (global or in an agent) but workspace_path is not set. "
+                    "Set workspace_path in tool configuration and restart."
+                )
+                sys.exit(1)
 
             # Collect include/exclude paths (may be empty if user did not set them)
             include_paths, _ = _collect_allowed_binaries(tool_config.include_paths, tool_config.exclude_paths)

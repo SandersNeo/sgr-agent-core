@@ -1,4 +1,4 @@
-# RunCommandTool and Safe Mode (Bubblewrap): Specification
+# RunCommandTool and Safe Mode (Bubblewrap)
 
 This document describes **RunCommandTool** (agent tool for executing shell commands) and how **safe** mode works via **Bubblewrap (bwrap)** on Linux. Unsafe mode uses the OS subprocess directly and works on all platforms.
 
@@ -21,7 +21,7 @@ So: **safe (default) = bwrap isolation (Linux); unsafe = OS subprocess (all plat
 
 ### RunCommandTool flow
 
-1. **Config**: In the global `tools:` section or per-agent: `workspace_path`, `mode` (`"safe"` or `"unsafe"`), `timeout_seconds`, `include_paths` (optional list of allowed commands/paths), `exclude_paths` (optional list of forbidden commands/paths). Default mode is **safe**.
+1. **Config**: In the global `tools:` section or per-agent: `workspace_path` (required when the tool is used), `mode` (`"safe"` or `"unsafe"`), `timeout_seconds`, `include_paths` (optional list of allowed commands/paths), `exclude_paths` (optional list of forbidden commands/paths). Default mode is **safe**. If RunCommandTool is used anywhere (global or in any agent) and `workspace_path` is not set for the effective config, the application logs an error and exits at startup (exit code 1).
 2. **LLM**: The agent passes a `command` string (and `reasoning`) to the tool.
 3. **Validation**: If `include_paths` or `exclude_paths` are set, the tool checks that the command executable and paths in arguments are allowed. Commands are matched by name (e.g. `"ls"`) or resolved path (e.g. `/usr/bin/ls`). **include_paths has priority over exclude_paths**: if a path is in both, it is allowed.
 4. **Unsafe**: The tool resolves `workspace_path` (if set), validates path-like tokens, then runs `sh -c "<command>"` with `cwd=workspace_path` and a timeout. Returns formatted stdout, stderr, return code.
@@ -66,17 +66,20 @@ This gives isolation (namespaces, limited filesystem) without extra configuratio
 ### OverlayFS Implementation Details
 
 **How OverlayFS works:**
+
 - **Lower layer** (read-only): Contains the original filesystem (e.g., `/usr/bin` with all binaries)
 - **Upper layer** (writable): Contains whiteout files (`.wh.<filename>`) that hide files from the lower layer
 - **Work directory**: Temporary directory used by OverlayFS for atomic operations
 - **Merged mount**: The combined view where excluded files are hidden
 
 **Whiteout files:**
+
 - Format: Character device with major/minor number 0/0, or regular file named `.wh.<original_filename>`
 - When OverlayFS encounters a whiteout, it hides the corresponding file from the lower layer
 - This allows excluding specific files from a directory without excluding the entire directory
 
 **Lifecycle Management:**
+
 - **Server startup**: OverlayFS is initialized by `OverlayFSManager` during FastAPI `lifespan` startup phase
 - **Configuration**: RunCommandTool config is taken from global `tools:` or from any agent (first candidate with `mode: "safe"` wins). If **everywhere** is `mode: "unsafe"`, overlay is **not** initialized. If **any** config (global or any agent) has `mode: "safe"`, overlay **is** initialized (include_paths/exclude_paths may be unset; then 0 mounts).
 - **Initialization**: Whenever at least one safe config exists (global or per-agent)
@@ -84,6 +87,7 @@ This gives isolation (namespaces, limited filesystem) without extra configuratio
 - **Server shutdown**: All OverlayFS mounts are automatically unmounted and temporary directories cleaned up during FastAPI `lifespan` shutdown phase
 
 **Advantages:**
+
 - Native kernel mechanism (no SUID required)
 - Fine-grained file exclusion within directories
 - Works seamlessly with bwrap
@@ -96,13 +100,13 @@ This gives isolation (namespaces, limited filesystem) without extra configuratio
 
 All parameters are optional. Set in the global `tools:` section or per-agent.
 
-| Parameter          | Type     | Default     | Description |
-|--------------------|----------|-------------|-------------|
-| `workspace_path`   | str      | None        | Directory for cwd (unsafe) or bwrap workspace (safe). In safe mode, this directory is bound as `/workspace` inside the sandbox. |
-| `mode`             | str      | `"safe"`    | `"safe"` or `"unsafe"`. Safe uses bwrap (Linux only); unsafe uses local subprocess. |
-| `timeout_seconds`  | int      | 60          | Max execution time in seconds. |
-| `include_paths`    | list[str] | None        | Allowed commands/paths. If set, only commands in this list can be executed. Commands are matched by name (e.g. `"ls"`) or full path (e.g. `"/usr/bin/ls"`). Paths in command arguments are also checked. **Has priority over exclude_paths** (same path in both is allowed). |
-| `exclude_paths`    | list[str] | None        | Excluded commands/paths. If set, these are forbidden unless also in `include_paths`. |
+| Parameter         | Type      | Default  | Description |
+|-------------------|-----------|----------|-------------|
+| `workspace_path`  | str       | None     | Directory for cwd (unsafe) or bwrap workspace (safe). In safe mode, this directory is bound as `/workspace` inside the sandbox. **Required** when RunCommandTool is used: if not set, the application exits at startup with an error. |
+| `mode`            | str       | `"safe"` | `"safe"` or `"unsafe"`. Safe uses bwrap (Linux only); unsafe uses local subprocess. |
+| `timeout_seconds` | int       | 60       | Max execution time in seconds. |
+| `include_paths`   | list[str] | None     | Allowed commands/paths. If set, only commands in this list can be executed. Commands are matched by name (e.g. `"ls"`) or full path (e.g. `"/usr/bin/ls"`). Paths in command arguments are also checked. **Has priority over exclude_paths** (same path in both is allowed). |
+| `exclude_paths`   | list[str] | None     | Excluded commands/paths. If set, these are forbidden unless also in `include_paths`. |
 
 Tool parameters (from the LLM / schema): `reasoning` (str), `command` (str, full command line).
 
@@ -180,9 +184,9 @@ Safe mode builds a minimal environment so that commands run in isolation with a 
 
 ## 6. Summary
 
-| Item | Description |
-|------|-------------|
+| Item               | Description |
+|--------------------|-------------|
 | **RunCommandTool** | Runs shell commands; **unsafe** = OS subprocess (all platforms); **safe** = bwrap sandbox (Linux, requires bwrap). |
-| **bwrap** | Must be installed for safe mode. Install: [Bubblewrap - Installation](https://github.com/containers/bubblewrap#installation). |
+| **bwrap**          | Must be installed for safe mode. Install: [Bubblewrap - Installation](https://github.com/containers/bubblewrap#installation). |
 | **Minimal defaults** | Safe mode uses a minimal bwrap setup: ro-bind /usr, workspace as /workspace, unshare-all, timeout. |
-| **OverlayFS** | When `include_paths`/`exclude_paths` are set, uses OverlayFS with whiteout files to exclude specific binaries from directories. |
+| **OverlayFS**      | When `include_paths`/`exclude_paths` are set, uses OverlayFS with whiteout files to exclude specific binaries from directories. |

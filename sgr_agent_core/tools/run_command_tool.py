@@ -381,8 +381,8 @@ class RunCommandTool(BaseTool):
         return self._format_result(out, err, return_code)
 
     async def _run_unsafe(self, cfg: RunCommandToolConfig) -> str:
-        """Execute via OS subprocess with optional workspace_path as cwd and path
-        validation."""
+        """Execute via OS subprocess with optional workspace_path as cwd and
+        path validation."""
         cwd = None
         if cfg.workspace_path:
             workspace = Path(cfg.workspace_path).expanduser().resolve()

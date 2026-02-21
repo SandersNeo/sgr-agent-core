@@ -569,8 +569,8 @@ All standard tools are automatically registered in `ToolRegistry` when imported 
 **Auxiliary Tools:**
 - `WebSearchTool` - For web search functionality
 - `ExtractPageContentTool` - For extracting content from web pages
-- `RunCommandTool` - Execute shell commands in unsafe (OS subprocess) or safe (Bubblewrap/bwrap + OverlayFS) mode with optional root path boundary
+- `RunCommandTool` - Execute shell commands in unsafe (OS subprocess) or safe (Bubblewrap/bwrap + OverlayFS) mode with workspace boundary
 
-**RunCommandTool** is configured via the `tools:` section. Parameters: `workspace_path` (directory boundary), `mode` (`"safe"` or `"unsafe"`, default `"safe"`), `timeout_seconds` (default 60), `include_paths` (optional list of allowed commands/paths), `exclude_paths` (optional list of forbidden commands/paths). include_paths has priority over exclude_paths. Safe mode uses Bubblewrap (bwrap) combined with OverlayFS on Linux for fine-grained file exclusion via whiteout files; bwrap must be installed (e.g. `apt install bubblewrap`). If bwrap is not found, the tool returns an error with an installation link. When `include_paths`/`exclude_paths` are set, OverlayFS creates filtered filesystem views where excluded binaries are hidden via whiteout files. See [RunCommandTool and safe mode spec](../specs/run-command-and-sandbox.md).
+**RunCommandTool** is configured via the `tools:` section. Parameters: `workspace_path` (required when the tool is used), `mode` (`"safe"` or `"unsafe"`, default `"safe"`), `timeout_seconds`, `include_paths`, `exclude_paths`. Safe mode uses bwrap + OverlayFS on Linux; bwrap must be installed. For full description, configuration reference, and security notes, see [RunCommandTool and safe mode](tools/run-command.md).
 
 All these tools can be referenced by name in agent configurations (see [Tool Configuration](#tool-configuration) section above).
