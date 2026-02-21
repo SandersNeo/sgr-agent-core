@@ -186,6 +186,9 @@ class OverlayFSManager:
     def cleanup(cls) -> None:
         """Unmount all overlay filesystems and clean up temporary
         directories."""
+        if not cls._overlay_mounts and cls._temp_base is None:
+            logger.warning("OverlayFSManager.cleanup called but OverlayFS was not initialized")
+            return
         for merged_path in list(cls._overlay_mounts.values()):
             try:
                 subprocess.run(["umount", merged_path], capture_output=True, check=False)

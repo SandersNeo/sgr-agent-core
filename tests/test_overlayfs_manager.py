@@ -74,6 +74,18 @@ class TestOverlayFSManager:
 
             mock_init.assert_not_called()
 
+    def test_cleanup_when_not_initialized_is_noop(self):
+        """OverlayFSManager.cleanup when never initialized does nothing and does not raise."""
+        OverlayFSManager._overlay_mounts = {}
+        OverlayFSManager._overlay_info = {}
+        OverlayFSManager._temp_base = None
+
+        OverlayFSManager.cleanup()
+
+        assert len(OverlayFSManager._overlay_mounts) == 0
+        assert len(OverlayFSManager._overlay_info) == 0
+        assert OverlayFSManager._temp_base is None
+
     def test_cleanup_unmounts_all_overlays(self):
         """OverlayFSManager.cleanup unmounts all overlay filesystems."""
         with (
