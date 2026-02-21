@@ -27,8 +27,7 @@ So: **safe = bwrap isolation (Linux); unsafe = OS subprocess (all platforms).**
 4. **Unsafe**: The tool resolves `root_path` (if set), validates path-like tokens, then runs `sh -c "<command>"` with `cwd=root_path` and a timeout. Returns formatted stdout, stderr, return code.
 5. **Safe**: The tool checks that `bwrap` is available (e.g. `which bwrap`). If not, returns an error with link to [Bubblewrap installation](https://github.com/containers/bubblewrap#installation). If available:
    - If `include` or `exclude` are set in the tool configuration, **OverlayFS** mounts are created at **server startup** (not per-command):
-     - Server reads RunCommandTool configuration from `GlobalConfig.tools.run_command_tool`
-     - If `mode: "safe"` and `include`/`exclude` are set, OverlayFSManager creates overlay filesystems:
+     - Server checks global `tools:` and each agent's `tools` list; if RunCommandTool is used anywhere with `mode: "safe"` and `include`/`exclude` set, OverlayFSManager creates overlay filesystems:
        - Creates temporary directories for overlay layers (lowerdir, upperdir, workdir)
        - Mounts original directories as lower layer (read-only)
        - Creates whiteout files in upper layer for excluded binaries
@@ -46,7 +45,7 @@ Safe mode uses a minimal but useful bwrap setup so the sandbox works out of the 
 
 - **Default filesystem** (when `include` is not set): Read-only bind of `/usr`; symlinks for `/bin`, `/lib`, `/lib64`; `--proc /proc`, `--dev /dev`; a writable **workspace** directory bound as `/workspace` (from `root_path` if set, else a temporary directory or current working directory).
 - **Restricted filesystem** (when `include` or `exclude` are set): Uses **OverlayFS** to create a filtered view of the filesystem:
-  - **Initialization**: OverlayFS mounts are created **once at server startup** when RunCommandTool configuration includes `mode: "safe"` and `include`/`exclude` parameters
+  - **Initialization**: OverlayFS mounts are created **once at server startup** if RunCommandTool is used in global `tools:` or in any agent's `tools` with `mode: "safe"` and `include`/`exclude` parameters
   - **Lower layer**: Original directories (e.g., `/usr/bin`) mounted read-only
   - **Upper layer**: Temporary directory containing whiteout files for excluded binaries
   - **Merged layer**: OverlayFS mount combining lower and upper layers, hiding excluded files
@@ -79,8 +78,8 @@ This gives isolation (namespaces, limited filesystem) without extra configuratio
 
 **Lifecycle Management:**
 - **Server startup**: OverlayFS mounts are created by `OverlayFSManager` during FastAPI `lifespan` startup phase
-- **Configuration**: Reads RunCommandTool config from `GlobalConfig.tools.run_command_tool` section
-- **Initialization**: Only if `mode: "safe"` and `include`/`exclude` are set
+- **Configuration**: RunCommandTool config is taken from global `tools:` or from any agent that uses the tool (first candidate with `mode: "safe"` and `include`/`exclude` wins)
+- **Initialization**: Only if at least one such config exists (global or per-agent)
 - **Runtime**: Pre-initialized mounts are reused for all command executions (no per-command overhead)
 - **Server shutdown**: All OverlayFS mounts are automatically unmounted and temporary directories cleaned up during FastAPI `lifespan` shutdown phase
 

@@ -246,24 +246,24 @@ def _collect_allowed_binaries(include: list[str] | None, exclude: list[str] | No
 
 
 def _create_overlayfs(
-    allowed_binaries: set[str],
-    excluded_binaries: set[str],
+    include_paths: set[str],
+    exclude_paths: set[str],
     base_temp_dir: Path,
 ) -> tuple[str, dict[str, str]]:
-    """Create OverlayFS mount with whiteout files for excluded binaries.
+    """Create OverlayFS mount with whiteout files for exclude paths.
 
     Creates overlay filesystem:
     - Lower layer: original directories (read-only)
-    - Upper layer: temporary directory with whiteout files for excluded binaries
+    - Upper layer: temporary directory with whiteout files for exclude paths
     - Merged layer: combined view with excluded files hidden
 
     Returns:
         Tuple of (merged_mount_path, overlay_info) where overlay_info contains
         paths to cleanup (upper, work, merged directories).
     """
-    # Group binaries by their parent directories
+    # Group paths by their parent directories
     dir_to_binaries: dict[str, set[str]] = {}
-    for bin_path in allowed_binaries | excluded_binaries:
+    for bin_path in include_paths | exclude_paths:
         bin_path_obj = Path(bin_path)
         parent_dir = str(bin_path_obj.parent)
         if parent_dir not in dir_to_binaries:
@@ -286,9 +286,9 @@ def _create_overlayfs(
         work_dir.mkdir(parents=True, exist_ok=True)
         merged_dir.mkdir(parents=True, exist_ok=True)
 
-        # Create whiteout files for excluded binaries in this directory
+        # Create whiteout files for exclude_paths in this directory
         for bin_path in binaries:
-            if bin_path in excluded_binaries:
+            if bin_path in exclude_paths:
                 bin_name = Path(bin_path).name
                 # Create whiteout file: .wh.<filename>
                 whiteout_path = upper_dir / f".wh.{bin_name}"

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import ClassVar
 
 from sgr_agent_core.agent_config import GlobalConfig
+from sgr_agent_core.agent_factory import AgentFactory
 from sgr_agent_core.tools.run_command_tool import (
     RunCommandToolConfig,
     _collect_allowed_binaries,
@@ -20,6 +21,25 @@ from sgr_agent_core.tools.run_command_tool import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _get_run_command_config_candidates(config: GlobalConfig) -> list[RunCommandToolConfig]:
+    """Collect RunCommandTool config from global tools and from each agent's
+    tools.
+
+    Returns list of RunCommandToolConfig: from global tool definition (if present)
+    and from each agent that uses RunCommandTool (effective kwargs per agent).
+    """
+    candidates: list[RunCommandToolConfig] = []
+    runcommand_def = config.tools.get("run_command_tool") or config.tools.get("runcommandtool")
+    if runcommand_def and hasattr(runcommand_def, "tool_kwargs"):
+        tool_config_dict = runcommand_def.tool_kwargs()
+        candidates.append(RunCommandToolConfig(**tool_config_dict))
+    for agent_def in config.agents.values():
+        _, tool_configs = AgentFactory._resolve_tools_with_configs(agent_def.tools, config)
+        if "runcommandtool" in tool_configs:
+            candidates.append(RunCommandToolConfig(**tool_configs["runcommandtool"]))
+    return candidates
 
 
 class OverlayFSManager:
@@ -40,12 +60,12 @@ class OverlayFSManager:
         return cls._instance
 
     @classmethod
-    def initialize_overlayfs(cls, allowed_binaries: set[str], excluded_binaries: set[str]) -> dict[str, str]:
-        """Initialize OverlayFS mounts for given binaries.
+    def initialize_overlayfs(cls, include_paths: set[str], exclude_paths: set[str]) -> dict[str, str]:
+        """Initialize OverlayFS mounts for given include/exclude paths.
 
         Args:
-            allowed_binaries: Set of allowed binary paths
-            excluded_binaries: Set of excluded binary paths
+            include_paths: Set of paths to include (allowed)
+            exclude_paths: Set of paths to exclude (hidden via whiteout)
 
         Returns:
             Dict mapping original directory -> merged mount path
@@ -54,9 +74,9 @@ class OverlayFSManager:
             cls._temp_base = Path(tempfile.mkdtemp(prefix="runcommand_overlay_"))
             logger.info("Created OverlayFS base directory: %s", cls._temp_base)
 
-        # Group binaries by their parent directories
+        # Group paths by their parent directories
         dir_to_binaries: dict[str, set[str]] = {}
-        for bin_path in allowed_binaries | excluded_binaries:
+        for bin_path in include_paths | exclude_paths:
             bin_path_obj = Path(bin_path)
             parent_dir = str(bin_path_obj.parent)
             if parent_dir not in dir_to_binaries:
@@ -80,9 +100,9 @@ class OverlayFSManager:
             work_dir.mkdir(parents=True, exist_ok=True)
             merged_dir.mkdir(parents=True, exist_ok=True)
 
-            # Create whiteout files for excluded binaries in this directory
+            # Create whiteout files for exclude_paths in this directory
             for bin_path in binaries:
-                if bin_path in excluded_binaries:
+                if bin_path in exclude_paths:
                     bin_name = Path(bin_path).name
                     # Create whiteout file: .wh.<filename>
                     whiteout_path = upper_dir / f".wh.{bin_name}"
@@ -138,27 +158,24 @@ class OverlayFSManager:
     def initialize_from_config(cls) -> None:
         """Initialize OverlayFS for RunCommandTool from GlobalConfig.
 
-        Reads RunCommandTool configuration from
-        GlobalConfig.tools.run_command_tool and initializes OverlayFS
-        mounts if mode is safe and include/exclude are set.
+        Checks global tools and every agent's tools; if RunCommandTool
+        is used anywhere with mode safe and include/exclude set,
+        initializes OverlayFS mounts once at startup.
         """
         try:
             config = GlobalConfig()
-            runcommand_config = config.tools.get("run_command_tool") or config.tools.get("runcommandtool")
-            if not runcommand_config:
+            candidates = _get_run_command_config_candidates(config)
+            tool_config = None
+            for c in candidates:
+                if c.mode == "safe" and (c.include or c.exclude):
+                    tool_config = c
+                    break
+            if not tool_config:
                 return
 
-            # Get tool config
-            tool_config_dict = runcommand_config.tool_kwargs() if hasattr(runcommand_config, "tool_kwargs") else {}
-            tool_config = RunCommandToolConfig(**tool_config_dict)
-
-            # Only initialize if include/exclude are set and mode is safe
-            if tool_config.mode != "safe" or (not tool_config.include and not tool_config.exclude):
-                return
-
-            # Collect binaries
-            allowed_binaries, _ = _collect_allowed_binaries(tool_config.include, tool_config.exclude)
-            excluded_binaries = set()
+            # Collect include/exclude paths
+            include_paths, _ = _collect_allowed_binaries(tool_config.include, tool_config.exclude)
+            exclude_paths: set[str] = set()
             if tool_config.exclude:
                 for excl_item in tool_config.exclude:
                     excl_path = _resolve_command_path(excl_item) if "/" not in excl_item else None
@@ -172,12 +189,12 @@ class OverlayFSManager:
                     if excl_path:
                         try:
                             if Path(excl_path).exists() and Path(excl_path).is_file():
-                                excluded_binaries.add(excl_path)
+                                exclude_paths.add(excl_path)
                         except Exception:
                             pass
 
-            if allowed_binaries or excluded_binaries:
-                mounts = cls.initialize_overlayfs(allowed_binaries, excluded_binaries)
+            if include_paths or exclude_paths:
+                mounts = cls.initialize_overlayfs(include_paths, exclude_paths)
                 logger.info("Initialized OverlayFS for RunCommandTool: %d mounts", len(mounts))
         except Exception:
             logger.exception("Failed to initialize OverlayFS for RunCommandTool")
