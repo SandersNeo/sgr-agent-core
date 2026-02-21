@@ -226,20 +226,17 @@ def _collect_allowed_binaries(
 
 def _bwrap_argv(
     workspace: Path,
-    allowed_dirs: set[str] | None = None,
     overlay_mounts: dict[str, str] | None = None,
 ) -> list[str]:
-    """Build bwrap args: mount allowed dirs or overlay mounts (or default /usr), proc, dev, bind workspace, unshare.
+    """Build bwrap args: overlay mounts (if any) or default /usr, proc, dev, workspace, unshare.
 
-    If overlay_mounts is provided, mounts overlay filesystems (merged layers) at their original locations.
-    If allowed_dirs is provided and not empty, mounts only those directories (plus /lib, /usr/lib
-    for dependencies, /proc, /dev). Otherwise uses default: ro-bind /usr, symlinks.
+    If overlay_mounts is provided, mounts overlay filesystems at their original
+    locations. Otherwise uses default: ro-bind /usr, symlinks.
     """
     work_str = str(workspace.resolve())
     args = []
 
     if overlay_mounts:
-        # Mount overlay filesystems (merged layers) at their original locations
         for original_dir, merged_path in overlay_mounts.items():
             try:
                 if Path(merged_path).exists():
@@ -247,7 +244,6 @@ def _bwrap_argv(
             except Exception:
                 pass
 
-        # Always mount essential system dirs for shared libraries
         essential_dirs = {"/lib", "/usr/lib", "/usr/lib64", "/lib64"}
         for dir_path in sorted(essential_dirs):
             try:
@@ -256,34 +252,11 @@ def _bwrap_argv(
             except Exception:
                 pass
 
-        # Create symlinks for compatibility
         if any("/usr/bin" in d or d == "/usr/bin" for d in overlay_mounts.keys()):
             args.extend(["--symlink", "usr/bin", "/bin"])
         args.extend(["--symlink", "usr/lib", "/lib"])
         args.extend(["--symlink", "usr/lib64", "/lib64"])
-    elif allowed_dirs:
-        # Mount only allowed directories + essential system dirs for dependencies
-        # Mount /lib and /usr/lib for shared libraries
-        essential_dirs = {"/lib", "/usr/lib", "/usr/lib64", "/lib64"}
-        all_dirs = allowed_dirs | essential_dirs
-
-        # Sort for consistent ordering
-        for dir_path in sorted(all_dirs):
-            try:
-                if Path(dir_path).exists():
-                    args.extend(["--ro-bind", dir_path, dir_path])
-            except Exception:
-                pass
-
-        # Create symlinks for compatibility if /usr/bin is mounted
-        if any("/usr/bin" in d or d == "/usr/bin" for d in allowed_dirs):
-            args.extend(["--symlink", "usr/bin", "/bin"])
-        if any("/usr/lib" in d or d == "/usr/lib" for d in all_dirs):
-            args.extend(["--symlink", "usr/lib", "/lib"])
-        if any("/usr/lib64" in d or d == "/usr/lib64" for d in all_dirs):
-            args.extend(["--symlink", "usr/lib64", "/lib64"])
     else:
-        # Default: mount /usr and create symlinks
         args.extend(
             [
                 "--ro-bind",
@@ -380,7 +353,7 @@ class RunCommandTool(BaseTool):
                     "Start server with RunCommandTool config including include_paths/exclude_paths."
                 )
 
-        argv = [bwrap_path] + _bwrap_argv(workspace, allowed_dirs=None, overlay_mounts=overlay_mounts) + [self.command]
+        argv = [bwrap_path] + _bwrap_argv(workspace, overlay_mounts=overlay_mounts) + [self.command]
         logger.info("RunCommandTool executing (safe/bwrap): %s", self.command[:200])
         try:
             process = await asyncio.create_subprocess_exec(
