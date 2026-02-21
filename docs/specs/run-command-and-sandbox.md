@@ -10,10 +10,10 @@ This document describes **RunCommandTool** (agent tool for executing shell comma
 
 **RunCommandTool** runs shell commands (e.g. `ls -la`, `python script.py`). Two modes:
 
-- **Unsafe (default)**: The command runs via the OS (asyncio subprocess). You can set **root_path** so the process uses that directory as cwd and path-like arguments cannot escape outside it. Works on Windows, macOS, Linux.
-- **Safe**: The command runs inside **Bubblewrap (bwrap)** sandbox: minimal filesystem view (read-only /usr, workspace bind), namespaces, no network by default. **Linux only**; requires `bwrap` to be installed. If `bwrap` is not found, the tool returns an error with an installation link.
+- **Safe (default)**: The command runs inside **Bubblewrap (bwrap)** sandbox: minimal filesystem view (read-only /usr, workspace bind), namespaces, no network by default. **Linux only**; requires `bwrap` to be installed. If `bwrap` is not found, the tool returns an error with an installation link.
+- **Unsafe**: The command runs via the OS (asyncio subprocess). You can set **root_path** so the process uses that directory as cwd and path-like arguments cannot escape outside it. Works on Windows, macOS, Linux.
 
-So: **safe = bwrap isolation (Linux); unsafe = OS subprocess (all platforms).**
+So: **safe (default) = bwrap isolation (Linux); unsafe = OS subprocess (all platforms).**
 
 ---
 
@@ -21,13 +21,13 @@ So: **safe = bwrap isolation (Linux); unsafe = OS subprocess (all platforms).**
 
 ### RunCommandTool flow
 
-1. **Config**: In the global `tools:` section or per-agent: `root_path`, `mode` (`"unsafe"` or `"safe"`), `timeout_seconds`, `include` (optional list of allowed commands/paths), `exclude` (optional list of forbidden commands/paths). Default mode is **unsafe**.
+1. **Config**: In the global `tools:` section or per-agent: `root_path`, `mode` (`"safe"` or `"unsafe"`), `timeout_seconds`, `include_paths` (optional list of allowed commands/paths), `exclude_paths` (optional list of forbidden commands/paths). Default mode is **safe**.
 2. **LLM**: The agent passes a `command` string (and `reasoning`) to the tool.
-3. **Validation**: If `include` or `exclude` are set, the tool checks that the command executable and paths in arguments are allowed. Commands are matched by name (e.g. `"ls"`) or resolved path (e.g. `/usr/bin/ls`). Exclude takes precedence: if a command is in both `include` and `exclude`, it is rejected.
+3. **Validation**: If `include_paths` or `exclude_paths` are set, the tool checks that the command executable and paths in arguments are allowed. Commands are matched by name (e.g. `"ls"`) or resolved path (e.g. `/usr/bin/ls`). **include_paths has priority over exclude_paths**: if a path is in both, it is allowed.
 4. **Unsafe**: The tool resolves `root_path` (if set), validates path-like tokens, then runs `sh -c "<command>"` with `cwd=root_path` and a timeout. Returns formatted stdout, stderr, return code.
 5. **Safe**: The tool checks that `bwrap` is available (e.g. `which bwrap`). If not, returns an error with link to [Bubblewrap installation](https://github.com/containers/bubblewrap#installation). If available:
-   - If `include` or `exclude` are set in the tool configuration, **OverlayFS** mounts are created at **server startup** (not per-command):
-     - Server checks global `tools:` and each agent's `tools` list; if RunCommandTool is used anywhere with `mode: "safe"` and `include`/`exclude` set, OverlayFSManager creates overlay filesystems:
+   - If `include_paths` or `exclude_paths` are set in the tool configuration, **OverlayFS** mounts are created at **server startup** (not per-command):
+     - Server checks global `tools:` and each agent's `tools` list; if RunCommandTool is used anywhere with `mode: "safe"` and `include_paths`/`exclude_paths` set, OverlayFSManager creates overlay filesystems:
        - Creates temporary directories for overlay layers (lowerdir, upperdir, workdir)
        - Mounts original directories as lower layer (read-only)
        - Creates whiteout files in upper layer for excluded binaries
@@ -35,7 +35,7 @@ So: **safe = bwrap isolation (Linux); unsafe = OS subprocess (all platforms).**
      - These mounts are reused for all command executions during server lifetime
    - At runtime, the tool uses pre-initialized OverlayFS mounts from OverlayFSManager
    - This restricts which binaries are available inside the sandbox at the filesystem level, including commands executed by scripts
-   - If neither `include` nor `exclude` are set, uses default mounts (read-only `/usr`, etc.)
+   - If neither `include_paths` nor `exclude_paths` are set, uses default mounts (read-only `/usr`, etc.)
    - On server shutdown, all OverlayFS mounts are automatically unmounted and temporary directories cleaned up
    - Runs the command via `bwrap` with the configured mounts and a timeout. Returns formatted stdout, stderr, return code.
 
@@ -43,13 +43,13 @@ So: **safe = bwrap isolation (Linux); unsafe = OS subprocess (all platforms).**
 
 Safe mode uses a minimal but useful bwrap setup so the sandbox works out of the box:
 
-- **Default filesystem** (when `include` is not set): Read-only bind of `/usr`; symlinks for `/bin`, `/lib`, `/lib64`; `--proc /proc`, `--dev /dev`; a writable **workspace** directory bound as `/workspace` (from `root_path` if set, else a temporary directory or current working directory).
-- **Restricted filesystem** (when `include` or `exclude` are set): Uses **OverlayFS** to create a filtered view of the filesystem:
-  - **Initialization**: OverlayFS mounts are created **once at server startup** if RunCommandTool is used in global `tools:` or in any agent's `tools` with `mode: "safe"` and `include`/`exclude` parameters
+- **Default filesystem** (when `include_paths` is not set): Read-only bind of `/usr`; symlinks for `/bin`, `/lib`, `/lib64`; `--proc /proc`, `--dev /dev`; a writable **workspace** directory bound as `/workspace` (from `root_path` if set, else a temporary directory or current working directory).
+- **Restricted filesystem** (when `include_paths` or `exclude_paths` are set): Uses **OverlayFS** to create a filtered view of the filesystem:
+  - **Initialization**: OverlayFS mounts are created **once at server startup** if RunCommandTool is used in global `tools:` or in any agent's `tools` with `mode: "safe"` and `include_paths`/`exclude_paths` parameters
   - **Lower layer**: Original directories (e.g., `/usr/bin`) mounted read-only
-  - **Upper layer**: Temporary directory containing whiteout files for excluded binaries
+  - **Upper layer**: Temporary directory containing whiteout files for exclude_paths
   - **Merged layer**: OverlayFS mount combining lower and upper layers, hiding excluded files
-  - For example, if `include: ["ls", "cat"]` and `exclude: ["rm"]`, and all are in `/usr/bin`:
+  - For example, if `include_paths: ["ls", "cat"]` and `exclude_paths: ["rm"]`, and all are in `/usr/bin`:
     - Lower layer: `/usr/bin` (read-only, contains all binaries)
     - Upper layer: Contains whiteout file `.wh.rm` to hide `rm`
     - Merged: `/usr/bin` overlay showing `ls` and `cat` but not `rm`
@@ -61,7 +61,7 @@ Safe mode uses a minimal but useful bwrap setup so the sandbox works out of the 
 - **Execution**: Process runs with `--chdir /workspace`, `--unshare-all`, `--die-with-parent`; command is run as `/bin/sh -c "<command>"`.
 - **Timeout**: Enforced by the tool (subprocess timeout) after `timeout_seconds`.
 
-This gives isolation (namespaces, limited filesystem) without extra configuration. When `include`/`exclude` are used, the sandbox uses OverlayFS to restrict binaries at the filesystem level, so scripts cannot execute forbidden commands even if they try.
+This gives isolation (namespaces, limited filesystem) without extra configuration. When `include_paths`/`exclude_paths` are used, the sandbox uses OverlayFS to restrict binaries at the filesystem level, so scripts cannot execute forbidden commands even if they try.
 
 ### OverlayFS Implementation Details
 
@@ -78,7 +78,7 @@ This gives isolation (namespaces, limited filesystem) without extra configuratio
 
 **Lifecycle Management:**
 - **Server startup**: OverlayFS mounts are created by `OverlayFSManager` during FastAPI `lifespan` startup phase
-- **Configuration**: RunCommandTool config is taken from global `tools:` or from any agent that uses the tool (first candidate with `mode: "safe"` and `include`/`exclude` wins)
+- **Configuration**: RunCommandTool config is taken from global `tools:` or from any agent that uses the tool (first candidate with `mode: "safe"` and `include_paths`/`exclude_paths` wins). If user sets `mode: "unsafe"` everywhere, overlay is not initialized; if **any** config (global or any agent) has `mode: "safe"` with `include_paths`/`exclude_paths`, overlay is initialized.
 - **Initialization**: Only if at least one such config exists (global or per-agent)
 - **Runtime**: Pre-initialized mounts are reused for all command executions (no per-command overhead)
 - **Server shutdown**: All OverlayFS mounts are automatically unmounted and temporary directories cleaned up during FastAPI `lifespan` shutdown phase
@@ -99,10 +99,10 @@ All parameters are optional. Set in the global `tools:` section or per-agent.
 | Parameter          | Type     | Default     | Description |
 |--------------------|----------|-------------|-------------|
 | `root_path`        | str      | None        | Directory for cwd (unsafe) or bwrap workspace (safe). In safe mode, this directory is bound as `/workspace` inside the sandbox. |
-| `mode`             | str      | `"unsafe"`  | `"safe"` or `"unsafe"`. Safe uses bwrap (Linux only); unsafe uses local subprocess. |
+| `mode`             | str      | `"safe"`    | `"safe"` or `"unsafe"`. Safe uses bwrap (Linux only); unsafe uses local subprocess. |
 | `timeout_seconds`  | int      | 60          | Max execution time in seconds. |
-| `include`          | list[str] | None        | Allowed commands/paths/directories. If set, only commands in this list can be executed. Commands are matched by name (e.g. `"ls"`) or full path (e.g. `"/usr/bin/ls"`). Paths in command arguments are also checked. |
-| `exclude`          | list[str] | None        | Excluded commands/paths/directories. If set, these are forbidden even if in `include`. Exclude takes precedence over include. |
+| `include_paths`    | list[str] | None        | Allowed commands/paths. If set, only commands in this list can be executed. Commands are matched by name (e.g. `"ls"`) or full path (e.g. `"/usr/bin/ls"`). Paths in command arguments are also checked. **Has priority over exclude_paths** (same path in both is allowed). |
+| `exclude_paths`    | list[str] | None        | Excluded commands/paths. If set, these are forbidden unless also in `include_paths`. |
 
 Tool parameters (from the LLM / schema): `reasoning` (str), `command` (str, full command line).
 
@@ -126,7 +126,7 @@ tools:
     timeout_seconds: 60
 ```
 
-Example (with include/exclude - restrict allowed commands):
+Example (with include_paths/exclude_paths - restrict allowed commands):
 
 ```yaml
 tools:
@@ -134,12 +134,12 @@ tools:
     root_path: "/tmp/agent_workspace"
     mode: "unsafe"
     timeout_seconds: 60
-    include:
+    include_paths:
       - "ls"
       - "cat"
       - "/usr/bin/python3"
       - "/tmp/agent_workspace"  # Allow access to workspace directory
-    exclude:
+    exclude_paths:
       - "rm"
       - "/usr/bin/rm"
 ```
@@ -185,4 +185,4 @@ Safe mode builds a minimal environment so that commands run in isolation with a 
 | **RunCommandTool** | Runs shell commands; **unsafe** = OS subprocess (all platforms); **safe** = bwrap sandbox (Linux, requires bwrap). |
 | **bwrap** | Must be installed for safe mode. Install: [Bubblewrap - Installation](https://github.com/containers/bubblewrap#installation). |
 | **Minimal defaults** | Safe mode uses a minimal bwrap setup: ro-bind /usr, workspace as /workspace, unshare-all, timeout. |
-| **OverlayFS** | When `include`/`exclude` are set, uses OverlayFS with whiteout files to exclude specific binaries from directories. |
+| **OverlayFS** | When `include_paths`/`exclude_paths` are set, uses OverlayFS with whiteout files to exclude specific binaries from directories. |

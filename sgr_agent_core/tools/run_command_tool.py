@@ -4,10 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import shlex
 import shutil
-import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -32,10 +30,10 @@ class RunCommandToolConfig(BaseModel):
     section)."""
 
     root_path: str | None = None
-    mode: str = "unsafe"
+    mode: str = "safe"
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS
-    include: list[str] | None = None  # Allowed commands/paths/directories
-    exclude: list[str] | None = None  # Excluded commands/paths/directories
+    include_paths: list[str] | None = None  # Allowed commands/paths (priority over exclude_paths)
+    exclude_paths: list[str] | None = None  # Excluded commands/paths (ignored if also in include_paths)
 
 
 def _resolve_command_path(command_name: str) -> str | None:
@@ -57,13 +55,17 @@ def _resolve_command_path(command_name: str) -> str | None:
 
 
 def _check_allowed(
-    command: str, include: list[str] | None, exclude: list[str] | None, root_path: Path | None
+    command: str,
+    include_paths: list[str] | None,
+    exclude_paths: list[str] | None,
+    root_path: Path | None,
 ) -> str | None:
-    """Check if command and its paths are allowed by include/exclude rules.
+    """Check if command and its paths are allowed. include_paths has priority
+    over exclude_paths (same path in both is allowed).
 
     Returns error message if not allowed, None if allowed.
     """
-    if not include and not exclude:
+    if not include_paths and not exclude_paths:
         return None
 
     try:
@@ -74,54 +76,47 @@ def _check_allowed(
     if not parts:
         return None
 
-    # Check executable (first token)
     cmd_name = parts[0]
     cmd_path = _resolve_command_path(cmd_name)
     cmd_to_check = cmd_path if cmd_path else cmd_name
 
-    # Check exclude first (explicitly forbidden) - check both name and resolved path
-    if exclude:
-        for excl_item in exclude:
-            # Try to resolve exclude item to path
-            excl_resolved = _resolve_command_path(excl_item) if "/" not in excl_item else None
-            excl_path = None
-            try:
-                excl_path = str(Path(excl_item).resolve()) if excl_item.startswith("/") else None
-            except Exception:
-                pass
-            # Check: command name matches, or resolved path matches
-            if (
-                cmd_name == excl_item
-                or (cmd_path and cmd_path == excl_resolved)
-                or (cmd_path and excl_path and cmd_path == excl_path)
-                or (cmd_to_check == excl_path)
-            ):
-                return f"Command '{cmd_name}' is excluded: {excl_item}"
+    def _matches(item: str, resolved: str | None, path: str | None) -> bool:
+        return (
+            cmd_name == item
+            or (cmd_path and resolved and cmd_path == resolved)
+            or (cmd_path and path and cmd_path == path)
+            or (cmd_to_check == path)
+        )
 
-    # Check include (must be allowed) - check both name and resolved path
-    if include:
-        allowed = False
-        for incl_item in include:
-            # Try to resolve include item to path
+    # include_paths has priority: if command matches include_paths, allow
+    if include_paths:
+        for incl_item in include_paths:
             incl_resolved = _resolve_command_path(incl_item) if "/" not in incl_item else None
             incl_path = None
             try:
                 incl_path = str(Path(incl_item).resolve()) if incl_item.startswith("/") else None
             except Exception:
                 pass
-            # Check: command name matches, or resolved path matches
-            if (
-                cmd_name == incl_item
-                or (cmd_path and cmd_path == incl_resolved)
-                or (cmd_path and incl_path and cmd_path == incl_path)
-                or (cmd_to_check == incl_path)
-            ):
-                allowed = True
-                break
-        if not allowed:
-            return f"Command '{cmd_name}' is not in include list. Allowed: {include}"
+            if _matches(incl_item, incl_resolved, incl_path):
+                return None
 
-    # Check paths in arguments (if root_path is set, validate they stay within it)
+    # exclude_paths: reject only if not in include_paths (already returned None above if included)
+    if exclude_paths:
+        for excl_item in exclude_paths:
+            excl_resolved = _resolve_command_path(excl_item) if "/" not in excl_item else None
+            excl_path = None
+            try:
+                excl_path = str(Path(excl_item).resolve()) if excl_item.startswith("/") else None
+            except Exception:
+                pass
+            if _matches(excl_item, excl_resolved, excl_path):
+                return f"Command '{cmd_name}' is excluded: {excl_item}"
+
+    # include_paths set but no match
+    if include_paths:
+        return f"Command '{cmd_name}' is not in include_paths. Allowed: {include_paths}"
+
+    # Check paths in arguments (if root_path is set)
     if root_path:
         for part in parts[1:]:
             if not part or part.startswith("-"):
@@ -131,10 +126,9 @@ def _check_allowed(
                     resolved = Path(part).resolve() if part.startswith("/") else (root_path / part).resolve()
                     if resolved != root_path:
                         resolved.relative_to(root_path)
-                    # Check exclude for paths
-                    if exclude:
-                        path_str = str(resolved)
-                        for excl_item in exclude:
+                    path_str = str(resolved)
+                    if exclude_paths:
+                        for excl_item in exclude_paths:
                             excl_resolved = _resolve_command_path(excl_item) if "/" not in excl_item else None
                             excl_path = None
                             try:
@@ -178,50 +172,39 @@ def _validate_command_paths(command: str, root_path: Path) -> str | None:
     return None
 
 
-def _collect_allowed_binaries(include: list[str] | None, exclude: list[str] | None) -> tuple[set[str], dict[str, str]]:
-    """Collect allowed binary paths and their target directories for symlink
-    creation.
+def _collect_allowed_binaries(
+    include_paths: list[str] | None, exclude_paths: list[str] | None
+) -> tuple[set[str], dict[str, str]]:
+    """Collect allowed binary paths. include_paths has priority over
+    exclude_paths (path in both is kept allowed).
 
     Returns:
-        Tuple of (allowed_binary_paths, dir_mapping) where:
-        - allowed_binary_paths: set of full paths to allowed binaries
-        - dir_mapping: dict mapping original dir -> temp dir for symlink creation
+        Tuple of (allowed_paths_set, dir_mapping). dir_mapping is unused (legacy).
     """
-    if not include:
+    if not include_paths:
         return set(), {}
 
-    allowed_binaries = set()
-    excluded_binaries = set()
+    allowed_binaries: set[str] = set()
+    excluded_binaries: set[str] = set()
 
-    # Collect binaries from include
-    for incl_item in include:
+    for incl_item in include_paths:
         incl_path = None
         if "/" not in incl_item:
-            # Command name - resolve to full path
             incl_path = _resolve_command_path(incl_item)
         else:
-            # Path - try to resolve
             try:
                 p = Path(incl_item).resolve()
                 if p.is_dir():
-                    # Directory - add all binaries in it (but this is complex, skip for now)
-                    # User should specify individual binaries
                     continue
-                elif p.is_file() or p.exists():
+                if p.is_file() or p.exists():
                     incl_path = str(p)
             except Exception:
                 continue
+        if incl_path and Path(incl_path).exists() and Path(incl_path).is_file():
+            allowed_binaries.add(incl_path)
 
-        if incl_path:
-            try:
-                if Path(incl_path).exists() and Path(incl_path).is_file():
-                    allowed_binaries.add(incl_path)
-            except Exception:
-                pass
-
-    # Collect binaries from exclude
-    if exclude:
-        for excl_item in exclude:
+    if exclude_paths:
+        for excl_item in exclude_paths:
             excl_path = None
             if "/" not in excl_item:
                 excl_path = _resolve_command_path(excl_item)
@@ -232,133 +215,13 @@ def _collect_allowed_binaries(include: list[str] | None, exclude: list[str] | No
                         excl_path = str(p)
                 except Exception:
                     continue
-            if excl_path:
-                try:
-                    if Path(excl_path).exists() and Path(excl_path).is_file():
-                        excluded_binaries.add(excl_path)
-                except Exception:
-                    pass
+            if excl_path and Path(excl_path).exists() and Path(excl_path).is_file():
+                excluded_binaries.add(excl_path)
 
-    # Remove excluded binaries (exclude specific binaries, not directories)
-    allowed_binaries -= excluded_binaries
+    # include_paths has priority: remove only excluded that are not in allowed
+    allowed_binaries -= excluded_binaries - allowed_binaries
 
     return allowed_binaries, {}
-
-
-def _create_overlayfs(
-    include_paths: set[str],
-    exclude_paths: set[str],
-    base_temp_dir: Path,
-) -> tuple[str, dict[str, str]]:
-    """Create OverlayFS mount with whiteout files for exclude paths.
-
-    Creates overlay filesystem:
-    - Lower layer: original directories (read-only)
-    - Upper layer: temporary directory with whiteout files for exclude paths
-    - Merged layer: combined view with excluded files hidden
-
-    Returns:
-        Tuple of (merged_mount_path, overlay_info) where overlay_info contains
-        paths to cleanup (upper, work, merged directories).
-    """
-    # Group paths by their parent directories
-    dir_to_binaries: dict[str, set[str]] = {}
-    for bin_path in include_paths | exclude_paths:
-        bin_path_obj = Path(bin_path)
-        parent_dir = str(bin_path_obj.parent)
-        if parent_dir not in dir_to_binaries:
-            dir_to_binaries[parent_dir] = set()
-        dir_to_binaries[parent_dir].add(bin_path)
-
-    overlay_mounts: dict[str, str] = {}  # original_dir -> merged_mount_path
-    overlay_info: dict[str, str] = {}  # for cleanup tracking
-
-    for original_dir, binaries in dir_to_binaries.items():
-        # Create temp directories for this overlay
-        dir_name = original_dir.replace("/", "_").lstrip("_")
-        lower_dir = Path(original_dir)
-        upper_dir = base_temp_dir / f"upper_{dir_name}"
-        work_dir = base_temp_dir / f"work_{dir_name}"
-        merged_dir = base_temp_dir / f"merged_{dir_name}"
-
-        # Create directories
-        upper_dir.mkdir(parents=True, exist_ok=True)
-        work_dir.mkdir(parents=True, exist_ok=True)
-        merged_dir.mkdir(parents=True, exist_ok=True)
-
-        # Create whiteout files for exclude_paths in this directory
-        for bin_path in binaries:
-            if bin_path in exclude_paths:
-                bin_name = Path(bin_path).name
-                # Create whiteout file: .wh.<filename>
-                whiteout_path = upper_dir / f".wh.{bin_name}"
-                if not whiteout_path.exists():
-                    # Create as character device 0/0 (whiteout format)
-                    try:
-                        os.mknod(str(whiteout_path), 0o000 | 0o200000, os.makedev(0, 0))
-                    except (OSError, PermissionError):
-                        # Fallback: create as regular file (some overlayfs implementations accept this)
-                        whiteout_path.touch()
-
-        # Mount overlayfs
-        try:
-            # Mount overlay: lowerdir=original_dir, upperdir=upper_dir, workdir=work_dir
-            lower_str = str(lower_dir.resolve())
-            upper_str = str(upper_dir.resolve())
-            work_str = str(work_dir.resolve())
-            merged_str = str(merged_dir.resolve())
-
-            mount_cmd = [
-                "mount",
-                "-t",
-                "overlay",
-                "overlay",
-                "-o",
-                f"lowerdir={lower_str},upperdir={upper_str},workdir={work_str}",
-                merged_str,
-            ]
-
-            result = subprocess.run(mount_cmd, capture_output=True, text=True, check=False)
-            if result.returncode != 0:
-                logger.warning("Failed to mount overlayfs for %s: %s", original_dir, result.stderr)
-                # Fallback: use original directory (no filtering)
-                overlay_mounts[original_dir] = original_dir
-                continue
-
-            overlay_mounts[original_dir] = merged_str
-            overlay_info[merged_str] = f"{upper_str}:{work_str}"  # Track for cleanup
-
-        except Exception:
-            logger.exception("Error creating overlayfs for %s", original_dir)
-            # Fallback: use original directory
-            overlay_mounts[original_dir] = original_dir
-
-    return overlay_mounts.get(list(dir_to_binaries.keys())[0], ""), overlay_info
-
-
-def _unmount_overlayfs(merged_path: str, overlay_info: dict[str, str]) -> None:
-    """Unmount overlayfs and clean up temporary directories."""
-    if not merged_path or merged_path not in overlay_info:
-        return
-
-    try:
-        # Unmount overlay
-        subprocess.run(["umount", merged_path], capture_output=True, check=False)
-    except Exception:
-        pass
-
-    # Clean up directories
-    try:
-        if Path(merged_path).exists():
-            shutil.rmtree(merged_path, ignore_errors=True)
-        info = overlay_info[merged_path]
-        upper_dir, work_dir = info.split(":")
-        if Path(upper_dir).exists():
-            shutil.rmtree(upper_dir, ignore_errors=True)
-        if Path(work_dir).exists():
-            shutil.rmtree(work_dir, ignore_errors=True)
-    except Exception:
-        pass
 
 
 def _bwrap_argv(
@@ -480,11 +343,11 @@ class RunCommandTool(BaseTool):
 
     async def __call__(self, context: AgentContext, config: AgentConfig, **kwargs: Any) -> str:
         """Run the command in unsafe or safe mode according to config."""
-        allowed = {"root_path", "mode", "timeout_seconds", "include", "exclude"}
+        allowed = {"root_path", "mode", "timeout_seconds", "include_paths", "exclude_paths"}
         cfg_dict = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
         cfg = RunCommandToolConfig(**cfg_dict)
         root_path_obj = Path(cfg.root_path).expanduser().resolve() if cfg.root_path else None
-        err = _check_allowed(self.command, cfg.include, cfg.exclude, root_path_obj)
+        err = _check_allowed(self.command, cfg.include_paths, cfg.exclude_paths, root_path_obj)
         if err:
             return f"Error: {err}"
         if cfg.mode == "safe":
@@ -505,18 +368,16 @@ class RunCommandTool(BaseTool):
         if not workspace.exists() or not workspace.is_dir():
             return f"Error: root_path does not exist or is not a directory: {workspace}"
 
-        # If include/exclude are set, use pre-initialized OverlayFS mounts from OverlayFSManager
-        # OverlayFS mounts are created at server startup and reused here
+        # If include_paths/exclude_paths are set, use pre-initialized OverlayFS from OverlayFSManager
         overlay_mounts = None
-        if cfg.include or cfg.exclude:
-            # Use pre-initialized OverlayFS mounts from OverlayFSManager
+        if cfg.include_paths or cfg.exclude_paths:
             from sgr_agent_core.services.overlayfs_manager import OverlayFSManager
 
             overlay_mounts = OverlayFSManager.get_overlay_mounts()
             if not overlay_mounts:
                 logger.warning(
                     "OverlayFS mounts not initialized. "
-                    "Make sure server was started with RunCommandTool configuration including include/exclude."
+                    "Start server with RunCommandTool config including include_paths/exclude_paths."
                 )
 
         argv = [bwrap_path] + _bwrap_argv(workspace, allowed_dirs=None, overlay_mounts=overlay_mounts) + [self.command]

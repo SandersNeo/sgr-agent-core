@@ -167,17 +167,17 @@ class OverlayFSManager:
             candidates = _get_run_command_config_candidates(config)
             tool_config = None
             for c in candidates:
-                if c.mode == "safe" and (c.include or c.exclude):
+                if c.mode == "safe" and (c.include_paths or c.exclude_paths):
                     tool_config = c
                     break
             if not tool_config:
                 return
 
             # Collect include/exclude paths
-            include_paths, _ = _collect_allowed_binaries(tool_config.include, tool_config.exclude)
+            include_paths, _ = _collect_allowed_binaries(tool_config.include_paths, tool_config.exclude_paths)
             exclude_paths: set[str] = set()
-            if tool_config.exclude:
-                for excl_item in tool_config.exclude:
+            if tool_config.exclude_paths:
+                for excl_item in tool_config.exclude_paths:
                     excl_path = _resolve_command_path(excl_item) if "/" not in excl_item else None
                     if not excl_path:
                         try:

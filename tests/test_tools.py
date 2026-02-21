@@ -250,10 +250,40 @@ class TestRunCommandTool:
         assert tool.reasoning == "List files"
         assert tool.command == "ls -la"
 
-    def test_run_command_tool_default_mode_is_unsafe(self):
-        """RunCommandTool default mode from config is unsafe (via kwargs)."""
-        tool = RunCommandTool(reasoning="r", command="echo ok")
-        assert tool.reasoning == "r"
+    def test_run_command_tool_default_mode_is_safe(self):
+        """RunCommandTool default mode is safe when mode not passed in
+        kwargs."""
+        from sgr_agent_core.tools.run_command_tool import RunCommandToolConfig
+
+        cfg = RunCommandToolConfig()
+        assert cfg.mode == "safe"
+
+    @pytest.mark.asyncio
+    async def test_run_command_tool_without_mode_uses_safe_path(self):
+        """RunCommandTool without explicit mode uses safe (bwrap) path."""
+        from sgr_agent_core.models import AgentContext
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tool = RunCommandTool(reasoning="Test", command="echo hi")
+            context = AgentContext()
+            config = MagicMock()
+            with (
+                patch("sgr_agent_core.tools.run_command_tool.shutil.which", return_value="/usr/bin/bwrap"),
+                patch(
+                    "sgr_agent_core.tools.run_command_tool.asyncio.create_subprocess_exec",
+                    new_callable=AsyncMock,
+                ) as mock_exec,
+            ):
+                proc = AsyncMock()
+                proc.communicate = AsyncMock(return_value=(b"hi\n", b""))
+                proc.returncode = 0
+                proc.kill = MagicMock()
+                mock_exec.return_value = proc
+                result = await tool(context, config, root_path=tmpdir)
+            assert "hi" in result
+            mock_exec.assert_called_once()
+            call_args = mock_exec.call_args[0]
+            assert "bwrap" in str(call_args[0])
 
     @pytest.mark.asyncio
     async def test_run_command_tool_unsafe_mode_runs_subprocess(self):
@@ -367,7 +397,7 @@ class TestRunCommandTool:
         context = AgentContext()
         config = MagicMock()
         # echo should be allowed if in include
-        result = await tool(context, config, mode="unsafe", include=["echo", "/bin/echo"])
+        result = await tool(context, config, mode="unsafe", include_paths=["echo", "/bin/echo"])
         assert "hello" in result
 
     @pytest.mark.asyncio
@@ -378,7 +408,7 @@ class TestRunCommandTool:
         tool = RunCommandTool(reasoning="Test", command="rm /tmp/file")
         context = AgentContext()
         config = MagicMock()
-        result = await tool(context, config, mode="unsafe", include=["echo", "ls"])
+        result = await tool(context, config, mode="unsafe", include_paths=["echo", "ls"])
         assert "error" in result.lower()
         assert "not in include" in result.lower() or "not allowed" in result.lower()
 
@@ -390,20 +420,32 @@ class TestRunCommandTool:
         tool = RunCommandTool(reasoning="Test", command="rm /tmp/file")
         context = AgentContext()
         config = MagicMock()
-        result = await tool(context, config, mode="unsafe", exclude=["rm", "/usr/bin/rm"])
+        result = await tool(context, config, mode="unsafe", exclude_paths=["rm", "/usr/bin/rm"])
         assert "error" in result.lower()
         assert "excluded" in result.lower()
 
     @pytest.mark.asyncio
-    async def test_run_command_tool_include_and_exclude_work_together(self):
-        """RunCommandTool with both include and exclude: exclude takes precedence."""
+    @pytest.mark.asyncio
+    async def test_run_command_tool_include_paths_priority_over_exclude_paths(self):
+        """RunCommandTool: include_paths has priority over exclude_paths (same path in both is allowed)."""
         from sgr_agent_core.models import AgentContext
 
         tool = RunCommandTool(reasoning="Test", command="rm /tmp/file")
         context = AgentContext()
         config = MagicMock()
-        # rm is in include but also in exclude -> should be rejected
-        result = await tool(context, config, mode="unsafe", include=["rm", "ls"], exclude=["rm"])
+        # rm is in both include_paths and exclude_paths -> allowed (include_paths wins)
+        result = await tool(context, config, mode="unsafe", include_paths=["rm", "ls"], exclude_paths=["rm"])
+        assert "excluded" not in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_run_command_tool_exclude_paths_rejects_when_not_in_include_paths(self):
+        """RunCommandTool: command only in exclude_paths is rejected."""
+        from sgr_agent_core.models import AgentContext
+
+        tool = RunCommandTool(reasoning="Test", command="rm /tmp/file")
+        context = AgentContext()
+        config = MagicMock()
+        result = await tool(context, config, mode="unsafe", include_paths=["ls", "cat"], exclude_paths=["rm"])
         assert "error" in result.lower()
         assert "excluded" in result.lower()
 
@@ -434,7 +476,7 @@ class TestRunCommandTool:
                 proc.kill = MagicMock()
                 mock_exec.return_value = proc
                 # Include only echo (should be in /usr/bin or /bin)
-                result = await tool(context, config, mode="safe", root_path=tmpdir, include=["echo"])
+                result = await tool(context, config, mode="safe", root_path=tmpdir, include_paths=["echo"])
             assert "hi" in result
             mock_exec.assert_called_once()
             mock_get_mounts.assert_called_once()
@@ -467,6 +509,13 @@ class TestRunCommandTool:
                 proc.kill = MagicMock()
                 mock_exec.return_value = proc
                 # Include ls but exclude rm (both in /usr/bin)
-                result = await tool(context, config, mode="safe", root_path=tmpdir, include=["ls"], exclude=["rm"])
+                result = await tool(
+                    context,
+                    config,
+                    mode="safe",
+                    root_path=tmpdir,
+                    include_paths=["ls"],
+                    exclude_paths=["rm"],
+                )
             assert "ls" in result
             mock_get_mounts.assert_called_once()

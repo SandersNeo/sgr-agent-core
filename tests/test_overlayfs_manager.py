@@ -21,8 +21,8 @@ class TestOverlayFSManager:
             mock_tool_def = MagicMock()
             mock_tool_def.tool_kwargs.return_value = {
                 "mode": "safe",
-                "include": ["ls", "cat"],
-                "exclude": ["rm"],
+                "include_paths": ["ls", "cat"],
+                "exclude_paths": ["rm"],
             }
             mock_config_instance.tools = {"run_command_tool": mock_tool_def}
             mock_config_instance.agents = {}
@@ -43,23 +43,68 @@ class TestOverlayFSManager:
 
             mock_init.assert_called_once()
 
-    def test_initialize_from_config_skips_if_not_safe_mode(self):
-        """OverlayFSManager.initialize_from_config skips if mode is not
-        safe."""
+    def test_initialize_from_config_skips_when_all_unsafe(self):
+        """OverlayFSManager.initialize_from_config skips when global and all
+        agents use unsafe mode (no safe+include/exclude anywhere)."""
         with (
             patch("sgr_agent_core.services.overlayfs_manager.GlobalConfig") as mock_global_config,
             patch("sgr_agent_core.services.overlayfs_manager.OverlayFSManager.initialize_overlayfs") as mock_init,
+            patch(
+                "sgr_agent_core.agent_factory.AgentFactory._resolve_tools_with_configs",
+                return_value=([], {"runcommandtool": {"mode": "unsafe"}}),
+            ),
         ):
             mock_config_instance = MagicMock()
             mock_tool_def = MagicMock()
             mock_tool_def.tool_kwargs.return_value = {"mode": "unsafe"}
             mock_config_instance.tools = {"run_command_tool": mock_tool_def}
-            mock_config_instance.agents = {}
+            mock_config_instance.agents = {"ag": MagicMock(tools=["run_command_tool"])}
             mock_global_config.return_value = mock_config_instance
 
             OverlayFSManager.initialize_from_config()
 
             mock_init.assert_not_called()
+
+    def test_initialize_from_config_runs_when_global_unsafe_but_agent_safe(
+        self,
+    ):
+        """OverlayFSManager.initialize_from_config runs when global is unsafe
+        but at least one agent has safe+include (init if safe anywhere)."""
+        with (
+            patch("sgr_agent_core.services.overlayfs_manager.GlobalConfig") as mock_global_config,
+            patch("sgr_agent_core.services.overlayfs_manager.OverlayFSManager.initialize_overlayfs") as mock_init,
+            patch(
+                "sgr_agent_core.agent_factory.AgentFactory._resolve_tools_with_configs",
+                return_value=(
+                    [],
+                    {
+                        "runcommandtool": {
+                            "mode": "safe",
+                            "include_paths": ["ls", "cat"],
+                            "exclude_paths": ["rm"],
+                        }
+                    },
+                ),
+            ),
+            patch(
+                "sgr_agent_core.services.overlayfs_manager._collect_allowed_binaries",
+                return_value=({"/usr/bin/ls", "/usr/bin/cat"}, {}),
+            ),
+            patch(
+                "sgr_agent_core.services.overlayfs_manager._resolve_command_path",
+                return_value="/usr/bin/rm",
+            ),
+        ):
+            mock_config_instance = MagicMock()
+            mock_tool_def = MagicMock()
+            mock_tool_def.tool_kwargs.return_value = {"mode": "unsafe"}
+            mock_config_instance.tools = {"run_command_tool": mock_tool_def}
+            mock_config_instance.agents = {"ag": MagicMock(tools=["run_command_tool"])}
+            mock_global_config.return_value = mock_config_instance
+
+            OverlayFSManager.initialize_from_config()
+
+            mock_init.assert_called_once()
 
     def test_initialize_from_config_skips_if_no_include_exclude(self):
         """OverlayFSManager.initialize_from_config skips if include/exclude not
@@ -89,7 +134,16 @@ class TestOverlayFSManager:
             patch("sgr_agent_core.services.overlayfs_manager.OverlayFSManager.initialize_overlayfs") as mock_init,
             patch(
                 "sgr_agent_core.agent_factory.AgentFactory._resolve_tools_with_configs",
-                return_value=([], {"runcommandtool": {"mode": "safe", "include": ["ls", "cat"], "exclude": ["rm"]}}),
+                return_value=(
+                    [],
+                    {
+                        "runcommandtool": {
+                            "mode": "safe",
+                            "include_paths": ["ls", "cat"],
+                            "exclude_paths": ["rm"],
+                        }
+                    },
+                ),
             ),
             patch(
                 "sgr_agent_core.services.overlayfs_manager._collect_allowed_binaries",
@@ -108,8 +162,8 @@ class TestOverlayFSManager:
                         {
                             "name": "run_command_tool",
                             "mode": "safe",
-                            "include": ["ls", "cat"],
-                            "exclude": ["rm"],
+                            "include_paths": ["ls", "cat"],
+                            "exclude_paths": ["rm"],
                         }
                     ]
                 )
