@@ -29,7 +29,7 @@ class RunCommandToolConfig(BaseModel):
     """Config model for RunCommandTool (built from kwargs only, no global
     section)."""
 
-    root_path: str | None = None
+    workspace_path: str | None = None
     mode: str = "safe"
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS
     include_paths: list[str] | None = None  # Allowed commands/paths (priority over exclude_paths)
@@ -58,7 +58,7 @@ def _check_allowed(
     command: str,
     include_paths: list[str] | None,
     exclude_paths: list[str] | None,
-    root_path: Path | None,
+    workspace_path: Path | None,
 ) -> str | None:
     """Check if command and its paths are allowed. include_paths has priority
     over exclude_paths (same path in both is allowed).
@@ -116,16 +116,16 @@ def _check_allowed(
     if include_paths:
         return f"Command '{cmd_name}' is not in include_paths. Allowed: {include_paths}"
 
-    # Check paths in arguments (if root_path is set)
-    if root_path:
+    # Check paths in arguments (if workspace_path is set)
+    if workspace_path:
         for part in parts[1:]:
             if not part or part.startswith("-"):
                 continue
             if "/" in part or part in (".", "..") or part.startswith("./") or part.startswith(".."):
                 try:
-                    resolved = Path(part).resolve() if part.startswith("/") else (root_path / part).resolve()
-                    if resolved != root_path:
-                        resolved.relative_to(root_path)
+                    resolved = Path(part).resolve() if part.startswith("/") else (workspace_path / part).resolve()
+                    if resolved != workspace_path:
+                        resolved.relative_to(workspace_path)
                     path_str = str(resolved)
                     if exclude_paths:
                         for excl_item in exclude_paths:
@@ -143,15 +143,15 @@ def _check_allowed(
                             ):
                                 return f"Path '{part}' is excluded: {excl_item}"
                 except ValueError:
-                    return f"Path escape not allowed: '{part}' is outside root {root_path}"
+                    return f"Path escape not allowed: '{part}' is outside workspace {workspace_path}"
                 except Exception:
                     pass
 
     return None
 
 
-def _validate_command_paths(command: str, root_path: Path) -> str | None:
-    """If any path-like token in command escapes root_path, return error
+def _validate_command_paths(command: str, workspace_path: Path) -> str | None:
+    """If any path-like token in command escapes workspace_path, return error
     message; else None."""
     try:
         parts = shlex.split(command)
@@ -162,11 +162,11 @@ def _validate_command_paths(command: str, root_path: Path) -> str | None:
             continue
         if "/" in part or part in (".", "..") or part.startswith("./") or part.startswith(".."):
             try:
-                resolved = Path(part).resolve() if part.startswith("/") else (root_path / part).resolve()
-                if resolved != root_path:
-                    resolved.relative_to(root_path)
+                resolved = Path(part).resolve() if part.startswith("/") else (workspace_path / part).resolve()
+                if resolved != workspace_path:
+                    resolved.relative_to(workspace_path)
             except ValueError:
-                return f"Path escape not allowed: '{part}' is outside root {root_path}"
+                return f"Path escape not allowed: '{part}' is outside workspace {workspace_path}"
             except Exception:
                 pass
     return None
@@ -300,7 +300,7 @@ def _bwrap_argv(
 class RunCommandTool(BaseTool):
     """Execute a shell command in unsafe (OS subprocess) or safe (bwrap) mode.
 
-    Unsafe: runs via OS (asyncio subprocess), optional root_path restricts to a directory.
+    Unsafe: runs via OS (asyncio subprocess), optional workspace_path restricts to a directory.
     Safe: runs via Bubblewrap (bwrap) with minimal defaults; Linux only, requires bwrap
     to be installed. If bwrap is not found, returns an error with installation link.
     """
@@ -316,11 +316,11 @@ class RunCommandTool(BaseTool):
 
     async def __call__(self, context: AgentContext, config: AgentConfig, **kwargs: Any) -> str:
         """Run the command in unsafe or safe mode according to config."""
-        allowed = {"root_path", "mode", "timeout_seconds", "include_paths", "exclude_paths"}
+        allowed = {"workspace_path", "mode", "timeout_seconds", "include_paths", "exclude_paths"}
         cfg_dict = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
         cfg = RunCommandToolConfig(**cfg_dict)
-        root_path_obj = Path(cfg.root_path).expanduser().resolve() if cfg.root_path else None
-        err = _check_allowed(self.command, cfg.include_paths, cfg.exclude_paths, root_path_obj)
+        workspace_path_obj = Path(cfg.workspace_path).expanduser().resolve() if cfg.workspace_path else None
+        err = _check_allowed(self.command, cfg.include_paths, cfg.exclude_paths, workspace_path_obj)
         if err:
             return f"Error: {err}"
         if cfg.mode == "safe":
@@ -337,9 +337,9 @@ class RunCommandTool(BaseTool):
                 f"Install: {BWRAP_INSTALL_URL} "
                 "(e.g. Debian/Ubuntu: apt install bubblewrap). Safe mode is Linux only."
             )
-        workspace = Path(cfg.root_path).expanduser().resolve() if cfg.root_path else Path("/tmp")
+        workspace = Path(cfg.workspace_path).expanduser().resolve() if cfg.workspace_path else Path("/tmp")
         if not workspace.exists() or not workspace.is_dir():
-            return f"Error: root_path does not exist or is not a directory: {workspace}"
+            return f"Error: workspace_path does not exist or is not a directory: {workspace}"
 
         # If include_paths/exclude_paths are set, use pre-initialized OverlayFS from OverlayFSManager
         overlay_mounts = None
@@ -381,19 +381,19 @@ class RunCommandTool(BaseTool):
         return self._format_result(out, err, return_code)
 
     async def _run_unsafe(self, cfg: RunCommandToolConfig) -> str:
-        """Execute via OS subprocess with optional root_path as cwd and path
+        """Execute via OS subprocess with optional workspace_path as cwd and path
         validation."""
         cwd = None
-        if cfg.root_path:
-            root = Path(cfg.root_path).expanduser().resolve()
-            if not root.exists():
-                return f"Error: root_path does not exist: {cfg.root_path}"
-            if not root.is_dir():
-                return f"Error: root_path is not a directory: {cfg.root_path}"
-            err = _validate_command_paths(self.command, root)
+        if cfg.workspace_path:
+            workspace = Path(cfg.workspace_path).expanduser().resolve()
+            if not workspace.exists():
+                return f"Error: workspace_path does not exist: {cfg.workspace_path}"
+            if not workspace.is_dir():
+                return f"Error: workspace_path is not a directory: {cfg.workspace_path}"
+            err = _validate_command_paths(self.command, workspace)
             if err:
                 return f"Error: {err}"
-            cwd = str(root)
+            cwd = str(workspace)
 
         logger.info("RunCommandTool executing (unsafe): %s", self.command[:200])
         try:

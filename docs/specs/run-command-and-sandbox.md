@@ -11,7 +11,7 @@ This document describes **RunCommandTool** (agent tool for executing shell comma
 **RunCommandTool** runs shell commands (e.g. `ls -la`, `python script.py`). Two modes:
 
 - **Safe (default)**: The command runs inside **Bubblewrap (bwrap)** sandbox: minimal filesystem view (read-only /usr, workspace bind), namespaces, no network by default. **Linux only**; requires `bwrap` to be installed. If `bwrap` is not found, the tool returns an error with an installation link.
-- **Unsafe**: The command runs via the OS (asyncio subprocess). You can set **root_path** so the process uses that directory as cwd and path-like arguments cannot escape outside it. Works on Windows, macOS, Linux.
+- **Unsafe**: The command runs via the OS (asyncio subprocess). You can set **workspace_path** so the process uses that directory as cwd and path-like arguments cannot escape outside it. Works on Windows, macOS, Linux.
 
 So: **safe (default) = bwrap isolation (Linux); unsafe = OS subprocess (all platforms).**
 
@@ -21,10 +21,10 @@ So: **safe (default) = bwrap isolation (Linux); unsafe = OS subprocess (all plat
 
 ### RunCommandTool flow
 
-1. **Config**: In the global `tools:` section or per-agent: `root_path`, `mode` (`"safe"` or `"unsafe"`), `timeout_seconds`, `include_paths` (optional list of allowed commands/paths), `exclude_paths` (optional list of forbidden commands/paths). Default mode is **safe**.
+1. **Config**: In the global `tools:` section or per-agent: `workspace_path`, `mode` (`"safe"` or `"unsafe"`), `timeout_seconds`, `include_paths` (optional list of allowed commands/paths), `exclude_paths` (optional list of forbidden commands/paths). Default mode is **safe**.
 2. **LLM**: The agent passes a `command` string (and `reasoning`) to the tool.
 3. **Validation**: If `include_paths` or `exclude_paths` are set, the tool checks that the command executable and paths in arguments are allowed. Commands are matched by name (e.g. `"ls"`) or resolved path (e.g. `/usr/bin/ls`). **include_paths has priority over exclude_paths**: if a path is in both, it is allowed.
-4. **Unsafe**: The tool resolves `root_path` (if set), validates path-like tokens, then runs `sh -c "<command>"` with `cwd=root_path` and a timeout. Returns formatted stdout, stderr, return code.
+4. **Unsafe**: The tool resolves `workspace_path` (if set), validates path-like tokens, then runs `sh -c "<command>"` with `cwd=workspace_path` and a timeout. Returns formatted stdout, stderr, return code.
 5. **Safe**: The tool checks that `bwrap` is available (e.g. `which bwrap`). If not, returns an error with link to [Bubblewrap installation](https://github.com/containers/bubblewrap#installation). If available:
    - If `include_paths` or `exclude_paths` are set in the tool configuration, **OverlayFS** mounts are created at **server startup** (not per-command):
      - Server checks global `tools:` and each agent's `tools` list; if RunCommandTool is used anywhere with `mode: "safe"` and `include_paths`/`exclude_paths` set, OverlayFSManager creates overlay filesystems:
@@ -43,7 +43,7 @@ So: **safe (default) = bwrap isolation (Linux); unsafe = OS subprocess (all plat
 
 Safe mode uses a minimal but useful bwrap setup so the sandbox works out of the box:
 
-- **Default filesystem** (when `include_paths` is not set): Read-only bind of `/usr`; symlinks for `/bin`, `/lib`, `/lib64`; `--proc /proc`, `--dev /dev`; a writable **workspace** directory bound as `/workspace` (from `root_path` if set, else a temporary directory or current working directory).
+- **Default filesystem** (when `include_paths` is not set): Read-only bind of `/usr`; symlinks for `/bin`, `/lib`, `/lib64`; `--proc /proc`, `--dev /dev`; a writable **workspace** directory bound as `/workspace` (from `workspace_path` if set, else a temporary directory or current working directory).
 - **Restricted filesystem** (when `include_paths` or `exclude_paths` are set): Uses **OverlayFS** to create a filtered view of the filesystem:
   - **Initialization**: OverlayFS is initialized **once at server startup** if RunCommandTool is used with `mode: "safe"` **anywhere** (global `tools:` or any agent's `tools`). Paths (`include_paths`/`exclude_paths`) may be unset; then no overlay mounts are created but the manager is ready. If paths are set, overlay mounts are created for those directories.
   - **Lower layer**: Original directories (e.g., `/usr/bin`) mounted read-only
@@ -98,7 +98,7 @@ All parameters are optional. Set in the global `tools:` section or per-agent.
 
 | Parameter          | Type     | Default     | Description |
 |--------------------|----------|-------------|-------------|
-| `root_path`        | str      | None        | Directory for cwd (unsafe) or bwrap workspace (safe). In safe mode, this directory is bound as `/workspace` inside the sandbox. |
+| `workspace_path`   | str      | None        | Directory for cwd (unsafe) or bwrap workspace (safe). In safe mode, this directory is bound as `/workspace` inside the sandbox. |
 | `mode`             | str      | `"safe"`    | `"safe"` or `"unsafe"`. Safe uses bwrap (Linux only); unsafe uses local subprocess. |
 | `timeout_seconds`  | int      | 60          | Max execution time in seconds. |
 | `include_paths`    | list[str] | None        | Allowed commands/paths. If set, only commands in this list can be executed. Commands are matched by name (e.g. `"ls"`) or full path (e.g. `"/usr/bin/ls"`). Paths in command arguments are also checked. **Has priority over exclude_paths** (same path in both is allowed). |
@@ -111,7 +111,7 @@ Example (unsafe):
 ```yaml
 tools:
   run_command_tool:
-    root_path: "/tmp/agent_workspace"
+    workspace_path: "/tmp/agent_workspace"
     mode: "unsafe"
     timeout_seconds: 120
 ```
@@ -121,7 +121,7 @@ Example (safe, Linux with bwrap installed):
 ```yaml
 tools:
   run_command_tool:
-    root_path: "/tmp/agent_workspace"
+    workspace_path: "/tmp/agent_workspace"
     mode: "safe"
     timeout_seconds: 60
 ```
@@ -131,7 +131,7 @@ Example (with include_paths/exclude_paths - restrict allowed commands):
 ```yaml
 tools:
   run_command_tool:
-    root_path: "/tmp/agent_workspace"
+    workspace_path: "/tmp/agent_workspace"
     mode: "unsafe"
     timeout_seconds: 60
     include_paths:
@@ -157,7 +157,7 @@ Safe mode requires **bwrap** on the system. If it is not installed, the tool ret
 
 ### Unsafe mode (OS)
 
-Unsafe mode uses the OS subprocess and optional **root_path**; works on all platforms. Use when you only need a directory boundary or when bwrap is not available (e.g. Windows, macOS).
+Unsafe mode uses the OS subprocess and optional **workspace_path**; works on all platforms. Use when you only need a directory boundary or when bwrap is not available (e.g. Windows, macOS).
 
 ### Bubblewrap + OverlayFS (safe mode)
 
@@ -173,8 +173,8 @@ Safe mode builds a minimal environment so that commands run in isolation with a 
 
 ## 5. Security notes
 
-- **Unsafe**: Runs as the same user as the agent. Path validation limits access to `root_path`; use timeout to avoid hanging.
-- **Safe**: Uses bwrap for namespace and filesystem isolation. The sandbox is not a full security boundary; use as a mitigation layer. Ensure `root_path` points to a dedicated workspace, not a sensitive directory.
+- **Unsafe**: Runs as the same user as the agent. Path validation limits access to `workspace_path`; use timeout to avoid hanging.
+- **Safe**: Uses bwrap for namespace and filesystem isolation. The sandbox is not a full security boundary; use as a mitigation layer. Ensure `workspace_path` points to a dedicated workspace, not a sensitive directory.
 
 ---
 

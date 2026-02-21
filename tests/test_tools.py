@@ -279,7 +279,7 @@ class TestRunCommandTool:
                 proc.returncode = 0
                 proc.kill = MagicMock()
                 mock_exec.return_value = proc
-                result = await tool(context, config, root_path=tmpdir)
+                result = await tool(context, config, workspace_path=tmpdir)
             assert "hi" in result
             mock_exec.assert_called_once()
             call_args = mock_exec.call_args[0]
@@ -299,16 +299,16 @@ class TestRunCommandTool:
         assert "return_code" in result.lower() or "0" in result
 
     @pytest.mark.asyncio
-    async def test_run_command_tool_uses_root_path_as_cwd(self):
-        """RunCommandTool with root_path runs command with cwd set to
-        root_path."""
+    async def test_run_command_tool_uses_workspace_path_as_cwd(self):
+        """RunCommandTool with workspace_path runs command with cwd set to
+        workspace_path."""
         from sgr_agent_core.models import AgentContext
 
         tmp = Path(__file__).resolve().parent
         tool = RunCommandTool(reasoning="Test", command="pwd")
         context = AgentContext()
         config = MagicMock()
-        result = await tool(context, config, mode="unsafe", root_path=str(tmp))
+        result = await tool(context, config, mode="unsafe", workspace_path=str(tmp))
         assert tmp.name in result or str(tmp) in result
 
     @pytest.mark.asyncio
@@ -348,7 +348,7 @@ class TestRunCommandTool:
                 proc.returncode = 0
                 proc.kill = MagicMock()
                 mock_exec.return_value = proc
-                result = await tool(context, config, mode="safe", root_path=tmpdir)
+                result = await tool(context, config, mode="safe", workspace_path=tmpdir)
             assert "hi" in result
             assert "return_code" in result.lower()
             mock_exec.assert_called_once()
@@ -376,8 +376,8 @@ class TestRunCommandTool:
             mock_create.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_run_command_tool_path_escape_rejected_when_root_path_set(self):
-        """RunCommandTool rejects command that escapes root_path (e.g.
+    async def test_run_command_tool_path_escape_rejected_when_workspace_path_set(self):
+        """RunCommandTool rejects command that escapes workspace_path (e.g.
         ../../../)."""
         from sgr_agent_core.models import AgentContext
 
@@ -385,7 +385,7 @@ class TestRunCommandTool:
         tool = RunCommandTool(reasoning="Test", command="cat ../../../../etc/passwd")
         context = AgentContext()
         config = MagicMock()
-        result = await tool(context, config, mode="unsafe", root_path=str(tmp))
+        result = await tool(context, config, mode="unsafe", workspace_path=str(tmp))
         assert "error" in result.lower() or "not allowed" in result.lower() or "outside" in result.lower()
 
     @pytest.mark.asyncio
@@ -476,7 +476,7 @@ class TestRunCommandTool:
                 proc.kill = MagicMock()
                 mock_exec.return_value = proc
                 # Include only echo (should be in /usr/bin or /bin)
-                result = await tool(context, config, mode="safe", root_path=tmpdir, include_paths=["echo"])
+                result = await tool(context, config, mode="safe", workspace_path=tmpdir, include_paths=["echo"])
             assert "hi" in result
             mock_exec.assert_called_once()
             mock_get_mounts.assert_called_once()
@@ -513,7 +513,7 @@ class TestRunCommandTool:
                     context,
                     config,
                     mode="safe",
-                    root_path=tmpdir,
+                    workspace_path=tmpdir,
                     include_paths=["ls"],
                     exclude_paths=["rm"],
                 )
