@@ -173,6 +173,10 @@ class OverlayFSManager:
                     tool_config = c
                     break
             if not tool_config:
+                if candidates:
+                    logger.warning(
+                        "RunCommandTool is configured only with unsafe mode; " "OverlayFS will not be initialized"
+                    )
                 return
 
             if not tool_config.workspace_path or not str(tool_config.workspace_path).strip():

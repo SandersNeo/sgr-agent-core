@@ -113,7 +113,7 @@ class TestOverlayFSManager:
             mock_exit.assert_not_called()
             mock_init.assert_called_once()
 
-    def test_initialize_from_config_skips_when_all_unsafe(self):
+    def test_initialize_from_config_skips_when_all_unsafe(self, caplog):
         """OverlayFSManager.initialize_from_config skips when global and all
         agents use unsafe mode (no safe+include/exclude anywhere)."""
         with (
@@ -131,9 +131,11 @@ class TestOverlayFSManager:
             mock_config_instance.agents = {"ag": MagicMock(tools=["run_command_tool"])}
             mock_global_config.return_value = mock_config_instance
 
-            OverlayFSManager.initialize_from_config()
+            with caplog.at_level("WARNING"):
+                OverlayFSManager.initialize_from_config()
 
             mock_init.assert_not_called()
+            assert any("configured only with unsafe mode" in message for message in caplog.messages)
 
     def test_initialize_from_config_runs_when_global_unsafe_but_agent_safe(
         self,
