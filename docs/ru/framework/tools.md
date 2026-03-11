@@ -571,6 +571,6 @@ execution:
 - `ExtractPageContentTool` - Для извлечения содержимого с веб-страниц
 - `RunCommandTool` - Выполнение shell-команд в режиме unsafe (субпроцесс ОС) или safe (песочница Bubblewrap/bwrap + OverlayFS)
 
-**RunCommandTool** настраивается через секцию `tools:`. Параметры: `workspace_path` (обязателен при использовании тула), `mode` (`"safe"` или `"unsafe"`, по умолчанию `"safe"`), `timeout_seconds`, `include_paths`, `exclude_paths`. Режим safe использует bwrap + OverlayFS на Linux; bwrap должен быть установлен. Подробное описание, справочник конфигурации и замечания по безопасности: [RunCommandTool и безопасный режим](tools/run-command.md).
+**RunCommandTool** настраивается через секцию `tools:`. Параметры: `workspace_path` (опциональный; если не задан, сервер создаёт директорию `./workspace` рядом с `config.yaml`), `mode` (`"safe"` или `"unsafe"`, по умолчанию `"safe"`), `timeout_seconds`, `include_paths`, `exclude_paths`. Режим safe использует bwrap + OverlayFS на Linux; bwrap должен быть установлен. Подробное описание, справочник конфигурации и замечания по безопасности: [RunCommandTool и безопасный режим](tools/run-command.md).
 
 Все эти тулы можно использовать по имени в конфигурациях агентов (см. раздел [Конфигурация тулов](#конфигурация-тулов) выше).

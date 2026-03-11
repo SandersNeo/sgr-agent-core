@@ -3,8 +3,6 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from sgr_agent_core.services.overlayfs_manager import OverlayFSManager
 
 
@@ -46,36 +44,41 @@ class TestOverlayFSManager:
 
             mock_init.assert_called_once()
 
-    def test_initialize_from_config_exits_when_tool_used_but_workspace_path_not_set(
-        self,
-    ):
-        """When RunCommandTool is used (global or agent) and no candidate has
-        workspace_path set, initialize_from_config logs error and exits."""
+    def test_initialize_from_config_creates_default_workspace_when_not_set(self, tmp_path, caplog):
+        """When RunCommandTool is used with safe mode and workspace_path is not
+        set, initialize_from_config creates ./workspace near config.yaml and
+        uses it instead of exiting."""
         with (
             patch("sgr_agent_core.services.overlayfs_manager.GlobalConfig") as mock_global_config,
             patch("sgr_agent_core.services.overlayfs_manager.OverlayFSManager.initialize_overlayfs") as mock_init,
-            patch("sgr_agent_core.services.overlayfs_manager.sys.exit") as mock_exit,
+            patch(
+                "sgr_agent_core.services.overlayfs_manager._collect_allowed_binaries",
+                return_value=(set(), {}),
+            ),
         ):
-            mock_exit.side_effect = SystemExit(1)
             mock_config_instance = MagicMock()
+            mock_config_instance.config_dir = tmp_path
             mock_tool_def = MagicMock()
             mock_tool_def.tool_kwargs.return_value = {"mode": "safe"}
             mock_config_instance.tools = {"run_command_tool": mock_tool_def}
             mock_config_instance.agents = {}
             mock_global_config.return_value = mock_config_instance
 
-            with pytest.raises(SystemExit, match="1"):
+            workspace_dir = tmp_path / "workspace"
+            with caplog.at_level("WARNING"):
                 OverlayFSManager.initialize_from_config()
 
-            mock_exit.assert_called_once_with(1)
-            mock_init.assert_not_called()
+            assert workspace_dir.exists() and workspace_dir.is_dir()
+            mock_init.assert_called_once()
+            assert any(
+                "workspace_path is not set; using default workspace directory" in message for message in caplog.messages
+            )
 
     def test_initialize_from_config_does_not_exit_when_tool_not_used(self):
         """When RunCommandTool is not used anywhere, no exit and no init."""
         with (
             patch("sgr_agent_core.services.overlayfs_manager.GlobalConfig") as mock_global_config,
             patch("sgr_agent_core.services.overlayfs_manager.OverlayFSManager.initialize_overlayfs") as mock_init,
-            patch("sgr_agent_core.services.overlayfs_manager.sys.exit") as mock_exit,
         ):
             mock_config_instance = MagicMock()
             mock_config_instance.tools = {}
@@ -84,7 +87,6 @@ class TestOverlayFSManager:
 
             OverlayFSManager.initialize_from_config()
 
-            mock_exit.assert_not_called()
             mock_init.assert_not_called()
 
     def test_initialize_from_config_does_not_exit_when_workspace_path_set(self):
@@ -92,7 +94,6 @@ class TestOverlayFSManager:
         with (
             patch("sgr_agent_core.services.overlayfs_manager.GlobalConfig") as mock_global_config,
             patch("sgr_agent_core.services.overlayfs_manager.OverlayFSManager.initialize_overlayfs") as mock_init,
-            patch("sgr_agent_core.services.overlayfs_manager.sys.exit") as mock_exit,
             patch(
                 "sgr_agent_core.services.overlayfs_manager._collect_allowed_binaries",
                 return_value=(set(), {}),
@@ -110,7 +111,6 @@ class TestOverlayFSManager:
 
             OverlayFSManager.initialize_from_config()
 
-            mock_exit.assert_not_called()
             mock_init.assert_called_once()
 
     def test_initialize_from_config_skips_when_all_unsafe(self, caplog):

@@ -21,7 +21,7 @@ So: **safe (default) = bwrap isolation (Linux); unsafe = OS subprocess (all plat
 
 ### RunCommandTool flow
 
-1. **Config**: In the global `tools:` section or per-agent: `workspace_path` (required when the tool is used), `mode` (`"safe"` or `"unsafe"`), `timeout_seconds`, `include_paths` (optional list of allowed commands/paths), `exclude_paths` (optional list of forbidden commands/paths). Default mode is **safe**. If RunCommandTool is used anywhere (global or in any agent) and `workspace_path` is not set for the effective config, the application logs an error and exits at startup (exit code 1).
+1. **Config**: In the global `tools:` section or per-agent: `workspace_path` (optional), `mode` (`"safe"` or `"unsafe"`), `timeout_seconds`, `include_paths` (optional list of allowed commands/paths), `exclude_paths` (optional list of forbidden commands/paths). Default mode is **safe**. If RunCommandTool is used anywhere (global or in any agent) and `workspace_path` is not set for the effective config, the server creates a default `./workspace` directory next to `config.yaml` and uses it as the workspace.
 2. **LLM**: The agent passes a `command` string (and `reasoning`) to the tool.
 3. **Validation**: If `include_paths` or `exclude_paths` are set, the tool checks that the command executable and paths in arguments are allowed. Commands are matched by name (e.g. `"ls"`) or resolved path (e.g. `/usr/bin/ls`). **include_paths has priority over exclude_paths**: if a path is in both, it is allowed.
 4. **Unsafe**: The tool resolves `workspace_path` (if set), validates path-like tokens, then runs `sh -c "<command>"` with `cwd=workspace_path` and a timeout. Returns formatted stdout, stderr, return code.
@@ -102,7 +102,7 @@ All parameters are optional. Set in the global `tools:` section or per-agent.
 
 | Parameter         | Type      | Default  | Description |
 |-------------------|-----------|----------|-------------|
-| `workspace_path`  | str       | None     | Directory for cwd (unsafe) or bwrap workspace (safe). In safe mode, this directory is bound as `/workspace` inside the sandbox. **Required** when RunCommandTool is used: if not set, the application exits at startup with an error. |
+| `workspace_path`  | str       | None     | Directory for cwd (unsafe) or bwrap workspace (safe). In safe mode, this directory is bound as `/workspace` inside the sandbox. If not set when RunCommandTool is used, the server creates a default `./workspace` directory next to `config.yaml` and uses it. |
 | `mode`            | str       | `"safe"` | `"safe"` or `"unsafe"`. Safe uses bwrap (Linux only); unsafe uses local subprocess. |
 | `timeout_seconds` | int       | 60       | Max execution time in seconds. |
 | `include_paths`   | list[str] | None     | Allowed commands/paths. If set, only commands in this list can be executed. Commands are matched by name (e.g. `"ls"`) or full path (e.g. `"/usr/bin/ls"`). Paths in command arguments are also checked. **Has priority over exclude_paths** (same path in both is allowed). |

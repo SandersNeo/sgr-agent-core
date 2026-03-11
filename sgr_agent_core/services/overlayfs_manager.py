@@ -8,7 +8,6 @@ import logging
 import os
 import shutil
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 from typing import ClassVar
@@ -180,11 +179,22 @@ class OverlayFSManager:
                 return
 
             if not tool_config.workspace_path or not str(tool_config.workspace_path).strip():
-                logger.error(
-                    "RunCommandTool is used (global or in an agent) but workspace_path is not set. "
-                    "Set workspace_path in tool configuration and restart."
+                base_dir = getattr(config, "config_dir", None) or Path.cwd()
+                try:
+                    base_path = Path(base_dir)
+                except TypeError:
+                    base_path = Path.cwd()
+                workspace_dir = base_path / "workspace"
+                try:
+                    workspace_dir.mkdir(parents=True, exist_ok=True)
+                except Exception:
+                    logger.exception("Failed to create default workspace directory at %s", workspace_dir)
+                    return
+                logger.warning(
+                    "RunCommandTool workspace_path is not set; using default workspace directory: %s",
+                    workspace_dir,
                 )
-                sys.exit(1)
+                tool_config.workspace_path = str(workspace_dir)
 
             # Collect include/exclude paths (may be empty if user did not set them)
             include_paths, _ = _collect_allowed_binaries(tool_config.include_paths, tool_config.exclude_paths)

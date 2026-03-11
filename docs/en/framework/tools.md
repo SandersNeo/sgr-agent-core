@@ -571,6 +571,6 @@ All standard tools are automatically registered in `ToolRegistry` when imported 
 - `ExtractPageContentTool` - For extracting content from web pages
 - `RunCommandTool` - Execute shell commands in unsafe (OS subprocess) or safe (Bubblewrap/bwrap + OverlayFS) mode with workspace boundary
 
-**RunCommandTool** is configured via the `tools:` section. Parameters: `workspace_path` (required when the tool is used), `mode` (`"safe"` or `"unsafe"`, default `"safe"`), `timeout_seconds`, `include_paths`, `exclude_paths`. Safe mode uses bwrap + OverlayFS on Linux; bwrap must be installed. For full description, configuration reference, and security notes, see [RunCommandTool and safe mode](tools/run-command.md).
+**RunCommandTool** is configured via the `tools:` section. Parameters: `workspace_path` (optional; if missing, a default `./workspace` directory is created next to `config.yaml`), `mode` (`"safe"` or `"unsafe"`, default `"safe"`), `timeout_seconds`, `include_paths`, `exclude_paths`. Safe mode uses bwrap + OverlayFS on Linux; bwrap must be installed. For full description, configuration reference, and security notes, see [RunCommandTool and safe mode](tools/run-command.md).
 
 All these tools can be referenced by name in agent configurations (see [Tool Configuration](#tool-configuration) section above).
