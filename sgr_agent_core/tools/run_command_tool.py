@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from pydantic import BaseModel, Field
 
 from sgr_agent_core.base_tool import BaseTool
+from sgr_agent_core.utils import run_process_with_timeout
 
 if TYPE_CHECKING:
     from sgr_agent_core.agent_definition import AgentConfig
@@ -366,19 +367,12 @@ class RunCommandTool(BaseTool):
             logger.exception("RunCommandTool bwrap exec failed")
             return f"Error: {e!s}"
         try:
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=cfg.timeout_seconds)
+            out, err, return_code = await run_process_with_timeout(process, cfg.timeout_seconds)
+            return self._format_result(out, err, return_code)
         except asyncio.TimeoutError:
             process.kill()
             await process.wait()
             return f"Error: Command timed out after {cfg.timeout_seconds} seconds."
-        out = stdout.decode("utf-8", errors="replace")
-        err = stderr.decode("utf-8", errors="replace")
-        return_code = process.returncode or 0
-
-        # OverlayFS mounts are managed by OverlayFSManager and cleaned up at server shutdown
-        # No cleanup needed here
-
-        return self._format_result(out, err, return_code)
 
     async def _run_unsafe(self, cfg: RunCommandToolConfig) -> str:
         """Execute via OS subprocess with optional workspace_path as cwd and
@@ -403,18 +397,16 @@ class RunCommandTool(BaseTool):
                 stderr=asyncio.subprocess.PIPE,
                 cwd=cwd,
             )
-            try:
-                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=cfg.timeout_seconds)
-            except asyncio.TimeoutError:
-                process.kill()
-                await process.wait()
-                return f"Error: Command timed out after {cfg.timeout_seconds} seconds."
-            out = stdout.decode("utf-8", errors="replace")
-            err = stderr.decode("utf-8", errors="replace")
-            return self._format_result(out, err, process.returncode or 0)
         except Exception as e:
             logger.exception("RunCommandTool subprocess failed")
             return f"Error: {e!s}"
+        try:
+            out, err, return_code = await run_process_with_timeout(process, cfg.timeout_seconds)
+            return self._format_result(out, err, return_code)
+        except asyncio.TimeoutError:
+            process.kill()
+            await process.wait()
+            return f"Error: Command timed out after {cfg.timeout_seconds} seconds."
 
     @staticmethod
     def _format_result(stdout: str, stderr: str, return_code: int) -> str:

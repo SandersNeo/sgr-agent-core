@@ -26,12 +26,12 @@ async def lifespan(_: FastAPI):
         logger.info(f"Streaming generator loaded: {gen.__name__}")
 
     # Initialize OverlayFS for RunCommandTool if configured
-    OverlayFSManager.initialize_from_config()
+    await OverlayFSManager.initialize_from_config()
 
     yield
 
     # Cleanup OverlayFS on shutdown
-    OverlayFSManager.cleanup()
+    await OverlayFSManager.cleanup()
 
 
 app = FastAPI(title="SGR Agent Core API", version=__version__, lifespan=lifespan)

@@ -4,10 +4,10 @@ Manages OverlayFS mounts created at server startup and unmounted at
 shutdown.
 """
 
+import asyncio
 import logging
 import os
 import shutil
-import subprocess
 import tempfile
 from pathlib import Path
 from typing import ClassVar
@@ -60,7 +60,7 @@ class OverlayFSManager:
         return cls._instance
 
     @classmethod
-    def initialize_overlayfs(cls, include_paths: set[str], exclude_paths: set[str]) -> dict[str, str]:
+    async def initialize_overlayfs(cls, include_paths: set[str], exclude_paths: set[str]) -> dict[str, str]:
         """Initialize OverlayFS mounts for given include/exclude paths.
 
         Args:
@@ -71,7 +71,7 @@ class OverlayFSManager:
             Dict mapping original directory -> merged mount path
         """
         if cls._temp_base is None:
-            cls._temp_base = Path(tempfile.mkdtemp(prefix="runcommand_overlay_"))
+            cls._temp_base = Path(await asyncio.to_thread(tempfile.mkdtemp, prefix="runcommand_overlay_"))
             logger.info("Created OverlayFS base directory: %s", cls._temp_base)
 
         # Group paths by their parent directories
@@ -95,31 +95,36 @@ class OverlayFSManager:
             work_dir = cls._temp_base / f"work_{dir_name}"
             merged_dir = cls._temp_base / f"merged_{dir_name}"
 
-            # Create directories
-            upper_dir.mkdir(parents=True, exist_ok=True)
-            work_dir.mkdir(parents=True, exist_ok=True)
-            merged_dir.mkdir(parents=True, exist_ok=True)
+            # Create directories (blocking I/O in thread pool)
+            await asyncio.to_thread(upper_dir.mkdir, parents=True, exist_ok=True)
+            await asyncio.to_thread(work_dir.mkdir, parents=True, exist_ok=True)
+            await asyncio.to_thread(merged_dir.mkdir, parents=True, exist_ok=True)
 
             # Create whiteout files for exclude_paths in this directory
             for bin_path in binaries:
                 if bin_path in exclude_paths:
                     bin_name = Path(bin_path).name
-                    # Create whiteout file: .wh.<filename>
                     whiteout_path = upper_dir / f".wh.{bin_name}"
-                    if not whiteout_path.exists():
-                        # Create as character device 0/0 (whiteout format)
-                        try:
-                            os.mknod(str(whiteout_path), 0o000 | 0o200000, os.makedev(0, 0))
-                        except (OSError, PermissionError):
-                            # Fallback: create as regular file
-                            whiteout_path.touch()
 
-            # Mount overlayfs
+                    def _ensure_whiteout() -> None:
+                        if not whiteout_path.exists():
+                            try:
+                                os.mknod(
+                                    str(whiteout_path),
+                                    0o000 | 0o200000,
+                                    os.makedev(0, 0),
+                                )
+                            except (OSError, PermissionError):
+                                whiteout_path.touch()
+
+                    await asyncio.to_thread(_ensure_whiteout)
+
+            # Mount overlayfs via async subprocess
             try:
-                lower_str = str(lower_dir.resolve())
-                upper_str = str(upper_dir.resolve())
-                work_str = str(work_dir.resolve())
-                merged_str = str(merged_dir.resolve())
+                lower_str = str(await asyncio.to_thread(lambda: lower_dir.resolve()))
+                upper_str = str(await asyncio.to_thread(lambda: upper_dir.resolve()))
+                work_str = str(await asyncio.to_thread(lambda: work_dir.resolve()))
+                merged_str = str(await asyncio.to_thread(lambda: merged_dir.resolve()))
 
                 mount_cmd = [
                     "mount",
@@ -131,9 +136,18 @@ class OverlayFSManager:
                     merged_str,
                 ]
 
-                result = subprocess.run(mount_cmd, capture_output=True, text=True, check=False)
-                if result.returncode != 0:
-                    logger.warning("Failed to mount overlayfs for %s: %s", original_dir, result.stderr)
+                process = await asyncio.create_subprocess_exec(
+                    *mount_cmd,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                _, stderr = await process.communicate()
+                if process.returncode != 0:
+                    logger.warning(
+                        "Failed to mount overlayfs for %s: %s",
+                        original_dir,
+                        stderr.decode("utf-8", errors="replace") if stderr else "",
+                    )
                     continue
 
                 cls._overlay_mounts[original_dir] = merged_str
@@ -155,7 +169,7 @@ class OverlayFSManager:
         return cls._overlay_mounts.copy()
 
     @classmethod
-    def initialize_from_config(cls) -> None:
+    async def initialize_from_config(cls) -> None:
         """Initialize OverlayFS for RunCommandTool from GlobalConfig.
 
         If RunCommandTool is used with mode safe anywhere (global or any
@@ -186,7 +200,7 @@ class OverlayFSManager:
                     base_path = Path.cwd()
                 workspace_dir = base_path / "workspace"
                 try:
-                    workspace_dir.mkdir(parents=True, exist_ok=True)
+                    await asyncio.to_thread(workspace_dir.mkdir, parents=True, exist_ok=True)
                 except Exception:
                     logger.exception("Failed to create default workspace directory at %s", workspace_dir)
                     return
@@ -216,14 +230,14 @@ class OverlayFSManager:
                         except Exception:
                             pass
 
-            mounts = cls.initialize_overlayfs(include_paths, exclude_paths)
+            mounts = await cls.initialize_overlayfs(include_paths, exclude_paths)
             if mounts:
                 logger.info("Initialized OverlayFS for RunCommandTool: %d mounts", len(mounts))
         except Exception:
             logger.exception("Failed to initialize OverlayFS for RunCommandTool")
 
     @classmethod
-    def cleanup(cls) -> None:
+    async def cleanup(cls) -> None:
         """Unmount all overlay filesystems and clean up temporary
         directories."""
         if not cls._overlay_mounts and cls._temp_base is None:
@@ -231,8 +245,17 @@ class OverlayFSManager:
             return
         for merged_path in list(cls._overlay_mounts.values()):
             try:
-                subprocess.run(["umount", merged_path], capture_output=True, check=False)
-                logger.info("Unmounted OverlayFS: %s", merged_path)
+                process = await asyncio.create_subprocess_exec(
+                    "umount",
+                    merged_path,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                await process.communicate()
+                if process.returncode != 0:
+                    logger.warning("Failed to unmount OverlayFS: %s", merged_path)
+                else:
+                    logger.info("Unmounted OverlayFS: %s", merged_path)
             except Exception:
                 logger.warning("Failed to unmount OverlayFS: %s", merged_path)
 
@@ -241,7 +264,7 @@ class OverlayFSManager:
 
         if cls._temp_base and cls._temp_base.exists():
             try:
-                shutil.rmtree(cls._temp_base)
+                await asyncio.to_thread(shutil.rmtree, cls._temp_base)
                 logger.info("Cleaned up OverlayFS base directory: %s", cls._temp_base)
             except Exception:
                 logger.warning("Failed to clean up OverlayFS base directory: %s", cls._temp_base)
