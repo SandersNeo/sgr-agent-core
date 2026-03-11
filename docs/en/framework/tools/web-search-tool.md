@@ -1,23 +1,23 @@
 ## WebSearchTool
 
-**Type:** Auxiliary Tool  
+**Type:** Auxiliary Tool
 **Source:** [sgr_agent_core/tools/web_search_tool.py](https://github.com/vamplabAI/sgr-agent-core/blob/main/sgr_agent_core/tools/web_search_tool.py)
 
 Searches the web for real-time information using Tavily Search API.
 
 **Parameters**
 
-- `reasoning` (str) - why this search is needed and what to expect  
-- `query` (str) - search query in same language as user request  
-- `max_results` (int, default=5, range 1-10) - maximum number of results to retrieve  
+- `reasoning` (str) - why this search is needed and what to expect
+- `query` (str) - search query in same language as user request
+- `max_results` (int, default=5, range 1-10) - maximum number of results to retrieve
 
 **Behavior**
 
-- Executes search via TavilySearchService  
-- Adds found sources to `context.sources` dictionary  
-- Creates SearchResult and appends to `context.searches`  
-- Increments `context.searches_used`  
-- Returns formatted string with search query and results (titles, links, snippets)  
+- Executes search via TavilySearchService
+- Adds found sources to `context.sources` dictionary
+- Creates SearchResult and appends to `context.searches`
+- Increments `context.searches_used`
+- Returns formatted string with search query and results (titles, links, snippets)
 
 **Usage**
 
@@ -25,12 +25,12 @@ Use for finding up-to-date information, verifying facts, researching current eve
 
 **Best practices**
 
-- Use specific terms and context in queries  
-- For acronyms, add context: "SGR Schema-Guided Reasoning"  
-- Use quotes for exact phrases: "Structured Output OpenAI"  
-- Keep search queries in the same language as the user request  
-- For date or number questions, include specific year or context in query  
-- Search snippets often contain direct answers, review them carefully  
+- Use specific terms and context in queries
+- For acronyms, add context: "SGR Schema-Guided Reasoning"
+- Use quotes for exact phrases: "Structured Output OpenAI"
+- Keep search queries in the same language as the user request
+- For date or number questions, include specific year or context in query
+- Search snippets often contain direct answers, review them carefully
 
 **Configuration**
 
@@ -55,4 +55,3 @@ agents:
     tools:
       - "web_search_tool"
 ```
-

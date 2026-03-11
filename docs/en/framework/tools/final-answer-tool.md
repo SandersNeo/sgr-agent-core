@@ -1,22 +1,22 @@
 ## FinalAnswerTool
 
-**Type:** System Tool  
+**Type:** System Tool
 **Source:** [sgr_agent_core/tools/final_answer_tool.py](https://github.com/vamplabAI/sgr-agent-core/blob/main/sgr_agent_core/tools/final_answer_tool.py)
 
 Finalizes research task and completes agent execution.
 
 **Parameters**
 
-- `reasoning` (str) - why task is complete and how answer was verified  
-- `completed_steps` (list[str], 1-5 items) - summary of completed steps including verification  
-- `answer` (str) - comprehensive final answer with exact factual details  
-- `status` (Literal["completed", "failed"]) - task completion status  
+- `reasoning` (str) - why task is complete and how answer was verified
+- `completed_steps` (list[str], 1-5 items) - summary of completed steps including verification
+- `answer` (str) - comprehensive final answer with exact factual details
+- `status` (Literal["completed", "failed"]) - task completion status
 
 **Behavior**
 
-- Sets `context.state` to the specified status  
-- Stores `answer` in `context.execution_result`  
-- Returns JSON representation of the final answer  
+- Sets `context.state` to the specified status
+- Stores `answer` in `context.execution_result`
+- Returns JSON representation of the final answer
 
 **Usage**
 
@@ -32,4 +32,3 @@ No specific configuration required.
 execution:
   max_iterations: 10  # After this limit, only final_answer_tool and create_report_tool are available
 ```
-
