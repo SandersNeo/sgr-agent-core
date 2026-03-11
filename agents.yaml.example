@@ -22,12 +22,6 @@ agents:
       # base_url: "https://api.openai.com/v1"  # Optional: use different endpoint
       # proxy: "http://127.0.0.1:8080"  # Optional: use proxy
 
-    # Optional: Override search settings
-    search:
-      max_results: 15
-      max_pages: 8
-      content_limit: 2000
-
     # Optional: Execution configuration
     execution:
       max_steps: 8
@@ -44,9 +38,9 @@ agents:
         deepwiki:
           url: "https://mcp.deepwiki.com/mcp"
 
-    # Tools: list of names, or dicts with "name" and optional kwargs (passed to tool at runtime)
+    # Tools: list of names, or dicts with "name" and optional kwargs (override global tool settings)
     tools:
-      - "web_search_tool"
+      - {"name": "web_search_tool", "max_results": 15}
       - {"name": "extract_page_content_tool", "content_limit": 2000}
       - "create_report_tool"
       - "clarification_tool"

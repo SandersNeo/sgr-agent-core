@@ -10,14 +10,6 @@ llm:
   temperature: 0.4  # Temperature (0.0-1.0)
   # proxy: "socks5://127.0.0.1:1081"  # Optional proxy (socks5:// or http://)
 
-# Search Configuration (not used by file agent, but required by config structure)
-search:
-  tavily_api_key: ""  # Not needed for file agent
-  tavily_api_base_url: "https://api.tavily.com"
-  max_searches: 0  # File agent doesn't use web search
-  max_results: 10
-  content_limit: 1500
-
 # Execution Settings
 execution:
   max_clarifications: 3  # Max clarification requests
