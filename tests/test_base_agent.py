@@ -12,7 +12,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from sgr_agent_core.agent_definition import AgentConfig, ExecutionConfig, LLMConfig, PromptsConfig, SearchConfig
+from sgr_agent_core.agent_definition import AgentConfig, ExecutionConfig, LLMConfig, PromptsConfig
 from sgr_agent_core.base_agent import BaseAgent
 from sgr_agent_core.models import AgentContext, AgentStatesEnum
 from sgr_agent_core.tools import BaseTool, ReasoningTool, WebSearchTool
@@ -351,11 +351,13 @@ class TestBaseAgentGetToolConfig:
             execution=ExecutionConfig(),
         )
         out = agent.get_tool_config(WebSearchTool)
-        assert isinstance(out, SearchConfig)
+        from sgr_agent_core.tools.web_search_tool import WebSearchConfig
+
+        assert isinstance(out, WebSearchConfig)
         assert out.max_searches == 6
 
     def test_get_tool_config_returns_model_from_tool_configs_only(self):
-        """get_tool_config builds SearchConfig exclusively from tool_configs
+        """get_tool_config builds config model exclusively from tool_configs
         (search settings are per-tool, not in AgentConfig)."""
         agent = create_test_agent(
             BaseAgent,
@@ -369,7 +371,9 @@ class TestBaseAgentGetToolConfig:
             execution=ExecutionConfig(),
         )
         out = agent.get_tool_config(WebSearchTool)
-        assert isinstance(out, SearchConfig)
+        from sgr_agent_core.tools.web_search_tool import WebSearchConfig
+
+        assert isinstance(out, WebSearchConfig)
         assert out.max_searches == 10
         assert out.tavily_api_key == "key"
 
