@@ -784,7 +784,7 @@ class TestAgentFactoryRegistryIntegration:
             agent_def = AgentDefinition(
                 name="sgr_agent",
                 base_class=SGRAgent,
-                tools=[{"name": "run_command_tool", "mode": "safe"}],
+                tools=[{"run_command_tool": {"mode": "safe"}}],
                 llm={"api_key": "test-key", "base_url": "https://api.openai.com/v1"},
                 prompts={
                     "system_prompt_str": "p",
