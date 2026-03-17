@@ -2,23 +2,23 @@
 
 This document describes all available tools in the SGR Deep Research framework, their parameters, behavior, and configuration options.
 
-## Tool Categories
-
 Tools are divided into two categories:
 
-**System Tools** - Essential tools required for deep research functionality. Without these, the research agent cannot function properly:
+**System** - Essential tools required for deep research functionality. Without these, the research agent cannot function properly.
 
-- ReasoningTool
-- FinalAnswerTool
-- CreateReportTool
-- ClarificationTool
-- GeneratePlanTool
-- AdaptPlanTool
+**Auxiliary** - Optional tools that extend agent capabilities but are not strictly required.
 
-**Auxiliary Tools** - Optional tools that extend agent capabilities but are not strictly required:
-
-- WebSearchTool
-- ExtractPageContentTool
+| Item | Category | Description |
+| --- | --- | --- |
+| [ReasoningTool](tools/reasoning-tool.md) | System | Core tool for Schema-Guided Reasoning agents that determines the next reasoning step |
+| [FinalAnswerTool](tools/final-answer-tool.md) | System | Final answer tool that completes the research task and updates agent state |
+| [CreateReportTool](tools/create-report-tool.md) | System | Tool for generating a detailed research report with inline citations and saving it to disk |
+| [ClarificationTool](tools/clarification-tool.md) | System | Tool for asking clarification questions and pausing execution until user response |
+| [GeneratePlanTool](tools/generate-plan-tool.md) | System | Tool for creating an initial research plan and breaking a request into steps |
+| [AdaptPlanTool](tools/adapt-plan-tool.md) | System | Tool for updating an existing research plan based on new information |
+| [WebSearchTool](tools/web-search-tool.md) | Auxiliary | Web search tool powered by Tavily Search API for fresh information |
+| [ExtractPageContentTool](tools/extract-page-content-tool.md) | Auxiliary | Tool for extracting full content from specific web pages using Tavily Extract API |
+| [RunCommandTool](tools/run-command.md) | Auxiliary | Tool for executing shell commands in safe or unsafe mode inside a workspace boundary |
 
 ## BaseTool
 
@@ -476,53 +476,6 @@ agents:
       max_iterations: 10
 ```
 
-### Defining Tools in Configuration
-
-You can define tools in a separate `tools:` section in `config.yaml` or `agents.yaml`. This allows you to:
-
-- Define custom tools with specific configurations
-- Reference tools by name in agent definitions
-- Override default tool classes using `base_class`
-
-**Tool Definition Format:**
-
-```yaml
-tools:
-  # Simple tool definition (uses default base_class from ToolRegistry)
-  reasoning_tool:
-    # base_class defaults to sgr_agent_core.tools.ReasoningTool
-
-  # Custom tool with explicit base_class
-  custom_tool:
-    base_class: "tools.CustomTool"  # Relative import path or full path
-    # Additional tool-specific parameters can be added here
-```
-
-**Using Defined Tools in Agents:**
-
-```yaml
-tools:
-  reasoning_tool:
-    # Uses default: sgr_agent_core.tools.ReasoningTool
-  custom_file_tool:
-    base_class: "tools.CustomFileTool"  # Custom tool from local module
-
-agents:
-  my_agent:
-    base_class: "SGRToolCallingAgent"
-    tools:
-      - "reasoning_tool"  # From tools section
-      - "custom_file_tool"  # From tools section
-      - "web_search_tool"  # Recommended: snake_case format
-      - "final_answer_tool"  # Recommended: snake_case format
-```
-
-!!! note "Tool Resolution Order"
-    When resolving tools, the system checks in this order:
-    1. Tools defined in `tools:` section (by name)
-    2. Tools registered in `ToolRegistry` (by snake_case name - recommended, or PascalCase class name for backward compatibility)
-    3. Auto-conversion from snake_case to PascalCase (e.g., `web_search_tool` → `WebSearchTool`) for backward compatibility
-
 ### Tool Availability Control
 
 Agents automatically filter available tools based on execution limits:
@@ -566,28 +519,6 @@ execution:
   mcp_context_limit: 15000  # Maximum context length from MCP server response
 ```
 
-## Tool Registry
+### Using Custom Tools in Configuration
 
-All tools are automatically registered in `ToolRegistry` when defined. Tools can be referenced by name in agent configurations.
-
-**Source:** [sgr_agent_core/services/registry.py](https://github.com/vamplabAI/sgr-agent-core/blob/main/sgr_agent_core/services/registry.py)
-
-Tools are registered with their `tool_name` (auto-generated from class name if not specified). Custom tools must be imported before agent creation to be registered.
-
-## Standard Tools
-
-All standard tools are automatically registered in `ToolRegistry` when imported from `sgr_agent_core.tools`. The standard toolkit includes:
-
-**System Tools:**
-- `ReasoningTool` - For SGR-based agents that require explicit reasoning phases
-- `ClarificationTool` - For requesting user clarifications
-- `GeneratePlanTool` - For generating research plans
-- `AdaptPlanTool` - For adapting research plans
-- `FinalAnswerTool` - For providing final answers
-- `CreateReportTool` - For creating research reports
-
-**Auxiliary Tools:**
-- `WebSearchTool` - For web search functionality
-- `ExtractPageContentTool` - For extracting content from web pages
-
-All these tools can be referenced by name in agent configurations (see [Tool Configuration](#tool-configuration) section above).
+Once you've created a custom tool, you can use it in your configuration via the `tools` section and by referencing tools by name from agent definitions. See the configuration examples below.

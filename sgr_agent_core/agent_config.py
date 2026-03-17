@@ -15,6 +15,9 @@ class GlobalConfig(BaseSettings, AgentConfig, Definitions):
     _instance: ClassVar[Self | None] = None
     _initialized: ClassVar[bool] = False
 
+    # Directory where main config.yaml lives (if loaded via from_yaml)
+    config_dir: Path | None = None
+
     def __new__(cls, *args, **kwargs):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
@@ -52,6 +55,8 @@ class GlobalConfig(BaseSettings, AgentConfig, Definitions):
         else:
             cls._initialized = False
             cls._instance = cls(**config_data, agents=cls._instance.agents, tools=cls._instance.tools)
+        # Remember config directory for features that need path relative to config.yaml
+        cls._instance.config_dir = config_dir
         # agents and tools should be initialized last to allow merging
         cls._definitions_from_dict({"agents": main_config_agents, "tools": main_config_tools})
         return cls._instance

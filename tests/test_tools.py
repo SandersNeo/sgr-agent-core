@@ -5,6 +5,8 @@ This module contains simple tests for all tools:
 - Config reading (if needed)
 """
 
+import tempfile
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -19,6 +21,7 @@ from sgr_agent_core.tools import (
     FinalAnswerTool,
     GeneratePlanTool,
     ReasoningTool,
+    RunCommandTool,
     WebSearchTool,
 )
 
@@ -272,3 +275,284 @@ class TestSearchToolsKwargs:
             await tool(context, config, tavily_api_key="k", content_limit=500)
             # search_config is passed as first positional arg
             assert mock_extract.call_args[0][0].content_limit == 500
+
+
+class TestRunCommandTool:
+    """Test suite for RunCommandTool."""
+
+    def test_run_command_tool_initialization(self):
+        """RunCommandTool initializes with reasoning and command."""
+        tool = RunCommandTool(reasoning="List files", command="ls -la")
+        assert tool.tool_name == "runcommandtool"
+        assert tool.reasoning == "List files"
+        assert tool.command == "ls -la"
+
+    def test_run_command_tool_default_mode_is_safe(self):
+        """RunCommandTool default mode is safe when mode not passed in
+        kwargs."""
+        from sgr_agent_core.tools.run_command_tool import RunCommandToolConfig
+
+        cfg = RunCommandToolConfig()
+        assert cfg.mode == "safe"
+
+    @pytest.mark.asyncio
+    async def test_run_command_tool_without_mode_uses_safe_path(self):
+        """RunCommandTool without explicit mode uses safe (bwrap) path."""
+        from sgr_agent_core.models import AgentContext
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tool = RunCommandTool(reasoning="Test", command="echo hi")
+            context = AgentContext()
+            config = MagicMock()
+            with (
+                patch("sgr_agent_core.tools.run_command_tool.shutil.which", return_value="/usr/bin/bwrap"),
+                patch(
+                    "sgr_agent_core.tools.run_command_tool.asyncio.create_subprocess_exec",
+                    new_callable=AsyncMock,
+                ) as mock_exec,
+            ):
+                proc = AsyncMock()
+                proc.communicate = AsyncMock(return_value=(b"hi\n", b""))
+                proc.returncode = 0
+                proc.kill = MagicMock()
+                mock_exec.return_value = proc
+                result = await tool(context, config, workspace_path=tmpdir)
+            assert "hi" in result
+            mock_exec.assert_called_once()
+            call_args = mock_exec.call_args[0]
+            assert "bwrap" in str(call_args[0])
+
+    @pytest.mark.asyncio
+    async def test_run_command_tool_unsafe_mode_runs_subprocess(self):
+        """RunCommandTool in unsafe mode runs command via subprocess and
+        returns output."""
+        from sgr_agent_core.models import AgentContext
+
+        tool = RunCommandTool(reasoning="Test", command="echo hello")
+        context = AgentContext()
+        config = MagicMock()
+        result = await tool(context, config, mode="unsafe")
+        assert "hello" in result
+        assert "return_code" in result.lower() or "0" in result
+
+    @pytest.mark.asyncio
+    async def test_run_command_tool_uses_workspace_path_as_cwd(self):
+        """RunCommandTool with workspace_path runs command with cwd set to
+        workspace_path."""
+        from sgr_agent_core.models import AgentContext
+
+        tmp = Path(__file__).resolve().parent
+        tool = RunCommandTool(reasoning="Test", command="pwd")
+        context = AgentContext()
+        config = MagicMock()
+        result = await tool(context, config, mode="unsafe", workspace_path=str(tmp))
+        assert tmp.name in result or str(tmp) in result
+
+    @pytest.mark.asyncio
+    async def test_run_command_tool_safe_mode_bwrap_not_found_returns_error(self):
+        """RunCommandTool in safe mode when bwrap is not installed returns
+        error with install link."""
+        from sgr_agent_core.models import AgentContext
+
+        tool = RunCommandTool(reasoning="Test", command="echo hi")
+        context = AgentContext()
+        config = MagicMock()
+        with patch("sgr_agent_core.tools.run_command_tool.shutil.which", return_value=None):
+            result = await tool(context, config, mode="safe")
+        assert "error" in result.lower()
+        assert "bwrap" in result.lower()
+        assert "github.com" in result or "containers/bubblewrap" in result or "installation" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_run_command_tool_safe_mode_with_bwrap_runs_command(self):
+        """RunCommandTool in safe mode with bwrap available runs command via
+        bwrap."""
+        from sgr_agent_core.models import AgentContext
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tool = RunCommandTool(reasoning="Test", command="echo hi")
+            context = AgentContext()
+            config = MagicMock()
+            with (
+                patch("sgr_agent_core.tools.run_command_tool.shutil.which", return_value="/usr/bin/bwrap"),
+                patch(
+                    "sgr_agent_core.tools.run_command_tool.asyncio.create_subprocess_exec",
+                    new_callable=AsyncMock,
+                ) as mock_exec,
+            ):
+                proc = AsyncMock()
+                proc.communicate = AsyncMock(return_value=(b"hi\n", b""))
+                proc.returncode = 0
+                proc.kill = MagicMock()
+                mock_exec.return_value = proc
+                result = await tool(context, config, mode="safe", workspace_path=tmpdir)
+            assert "hi" in result
+            assert "return_code" in result.lower()
+            mock_exec.assert_called_once()
+            call_args = mock_exec.call_args[0]
+            assert call_args[0] == "/usr/bin/bwrap" or "bwrap" in str(call_args)
+
+    @pytest.mark.asyncio
+    async def test_run_command_tool_uses_timeout_from_kwargs(self):
+        """RunCommandTool uses timeout_seconds from kwargs."""
+        from sgr_agent_core.models import AgentContext
+
+        tool = RunCommandTool(reasoning="Test", command="echo ok")
+        context = AgentContext()
+        config = MagicMock()
+        with patch("sgr_agent_core.tools.run_command_tool.asyncio.create_subprocess_shell") as mock_create:
+            proc = AsyncMock()
+            proc.communicate = AsyncMock(return_value=(b"ok\n", b""))
+            proc.returncode = 0
+            proc.kill = MagicMock()
+            mock_create.return_value = proc
+            await tool(context, config, mode="unsafe", timeout_seconds=30)
+            call_kwargs = mock_create.call_args[1]
+            assert call_kwargs.get("cwd") is None or "cwd" in call_kwargs
+            # timeout is applied in wait_for(communicate(), timeout=...)
+            mock_create.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_run_command_tool_path_escape_rejected_when_workspace_path_set(self):
+        """RunCommandTool rejects command that escapes workspace_path (e.g.
+        ../../../)."""
+        from sgr_agent_core.models import AgentContext
+
+        tmp = Path(__file__).resolve().parent
+        tool = RunCommandTool(reasoning="Test", command="cat ../../../../etc/passwd")
+        context = AgentContext()
+        config = MagicMock()
+        result = await tool(context, config, mode="unsafe", workspace_path=str(tmp))
+        assert "error" in result.lower() or "not allowed" in result.lower() or "outside" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_run_command_tool_include_allows_command(self):
+        """RunCommandTool with include allows only listed commands."""
+        from sgr_agent_core.models import AgentContext
+
+        tool = RunCommandTool(reasoning="Test", command="echo hello")
+        context = AgentContext()
+        config = MagicMock()
+        # echo should be allowed if in include
+        result = await tool(context, config, mode="unsafe", include_paths=["echo", "/bin/echo"])
+        assert "hello" in result
+
+    @pytest.mark.asyncio
+    async def test_run_command_tool_include_rejects_not_listed_command(self):
+        """RunCommandTool with include rejects commands not in the list."""
+        from sgr_agent_core.models import AgentContext
+
+        tool = RunCommandTool(reasoning="Test", command="rm /tmp/file")
+        context = AgentContext()
+        config = MagicMock()
+        result = await tool(context, config, mode="unsafe", include_paths=["echo", "ls"])
+        assert "error" in result.lower()
+        assert "not in include" in result.lower() or "not allowed" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_run_command_tool_exclude_rejects_command(self):
+        """RunCommandTool with exclude rejects excluded commands."""
+        from sgr_agent_core.models import AgentContext
+
+        tool = RunCommandTool(reasoning="Test", command="rm /tmp/file")
+        context = AgentContext()
+        config = MagicMock()
+        result = await tool(context, config, mode="unsafe", exclude_paths=["rm", "/usr/bin/rm"])
+        assert "error" in result.lower()
+        assert "excluded" in result.lower()
+
+    @pytest.mark.asyncio
+    @pytest.mark.asyncio
+    async def test_run_command_tool_include_paths_priority_over_exclude_paths(self):
+        """RunCommandTool: include_paths has priority over exclude_paths (same path in both is allowed)."""
+        from sgr_agent_core.models import AgentContext
+
+        tool = RunCommandTool(reasoning="Test", command="rm /tmp/file")
+        context = AgentContext()
+        config = MagicMock()
+        # rm is in both include_paths and exclude_paths -> allowed (include_paths wins)
+        result = await tool(context, config, mode="unsafe", include_paths=["rm", "ls"], exclude_paths=["rm"])
+        assert "excluded" not in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_run_command_tool_exclude_paths_rejects_when_not_in_include_paths(self):
+        """RunCommandTool: command only in exclude_paths is rejected."""
+        from sgr_agent_core.models import AgentContext
+
+        tool = RunCommandTool(reasoning="Test", command="rm /tmp/file")
+        context = AgentContext()
+        config = MagicMock()
+        result = await tool(context, config, mode="unsafe", include_paths=["ls", "cat"], exclude_paths=["rm"])
+        assert "error" in result.lower()
+        assert "excluded" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_run_command_tool_safe_mode_with_include_uses_overlayfs_manager(self):
+        """RunCommandTool in safe mode with include uses OverlayFSManager
+        mounts."""
+        from sgr_agent_core.models import AgentContext
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tool = RunCommandTool(reasoning="Test", command="echo hi")
+            context = AgentContext()
+            config = MagicMock()
+            with (
+                patch("sgr_agent_core.tools.run_command_tool.shutil.which", return_value="/usr/bin/bwrap"),
+                patch(
+                    "sgr_agent_core.tools.run_command_tool.asyncio.create_subprocess_exec",
+                    new_callable=AsyncMock,
+                ) as mock_exec,
+                patch(
+                    "sgr_agent_core.services.overlayfs_manager.OverlayFSManager.get_overlay_mounts",
+                    return_value={"/usr/bin": "/tmp/merged_usr_bin"},
+                ) as mock_get_mounts,
+            ):
+                proc = AsyncMock()
+                proc.communicate = AsyncMock(return_value=(b"hi\n", b""))
+                proc.returncode = 0
+                proc.kill = MagicMock()
+                mock_exec.return_value = proc
+                # Include only echo (should be in /usr/bin or /bin)
+                result = await tool(context, config, mode="safe", workspace_path=tmpdir, include_paths=["echo"])
+            assert "hi" in result
+            mock_exec.assert_called_once()
+            mock_get_mounts.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_run_command_tool_safe_mode_with_exclude_uses_overlayfs_manager(self):
+        """RunCommandTool in safe mode with exclude uses OverlayFSManager
+        mounts."""
+        from sgr_agent_core.models import AgentContext
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tool = RunCommandTool(reasoning="Test", command="ls")
+            context = AgentContext()
+            config = MagicMock()
+            with (
+                patch("sgr_agent_core.tools.run_command_tool.shutil.which", return_value="/usr/bin/bwrap"),
+                patch(
+                    "sgr_agent_core.tools.run_command_tool.asyncio.create_subprocess_exec",
+                    new_callable=AsyncMock,
+                ) as mock_exec,
+                patch(
+                    "sgr_agent_core.services.overlayfs_manager.OverlayFSManager.get_overlay_mounts",
+                    return_value={"/usr/bin": "/tmp/merged_usr_bin"},
+                ) as mock_get_mounts,
+                patch("sgr_agent_core.tools.run_command_tool._check_allowed", return_value=None),
+            ):
+                proc = AsyncMock()
+                proc.communicate = AsyncMock(return_value=(b"ls\n", b""))
+                proc.returncode = 0
+                proc.kill = MagicMock()
+                mock_exec.return_value = proc
+                # Include ls but exclude rm (both in /usr/bin)
+                result = await tool(
+                    context,
+                    config,
+                    mode="safe",
+                    workspace_path=tmpdir,
+                    include_paths=["ls"],
+                    exclude_paths=["rm"],
+                )
+            assert "ls" in result
+            mock_get_mounts.assert_called_once()

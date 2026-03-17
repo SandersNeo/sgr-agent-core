@@ -26,7 +26,7 @@ from sgr_agent_core.agents import (
 )
 from sgr_agent_core.base_agent import BaseAgent
 from sgr_agent_core.stream import OpenAIStreamingGenerator, OpenWebUIStreamingGenerator
-from sgr_agent_core.tools import BaseTool, ReasoningTool
+from sgr_agent_core.tools import BaseTool, ReasoningTool, RunCommandTool
 
 
 def mock_global_config():
@@ -772,6 +772,30 @@ class TestAgentFactoryRegistryIntegration:
             )
             agent = await AgentFactory.create(agent_def, task_messages=[{"role": "user", "content": "Test"}])
             assert agent.tool_configs.get("reasoningtool") == {"max_results": 20}
+
+    @pytest.mark.asyncio
+    async def test_create_agent_with_run_command_tool_safe_mode(self):
+        """Agent with RunCommandTool in safe mode is created; sandbox is
+        handled by the tool."""
+        with (
+            patch("sgr_agent_core.agent_factory.MCP2ToolConverter.build_tools_from_mcp", return_value=[]),
+            mock_global_config(),
+        ):
+            agent_def = AgentDefinition(
+                name="sgr_agent",
+                base_class=SGRAgent,
+                tools=[{"run_command_tool": {"mode": "safe"}}],
+                llm={"api_key": "test-key", "base_url": "https://api.openai.com/v1"},
+                prompts={
+                    "system_prompt_str": "p",
+                    "initial_user_request_str": "p",
+                    "clarification_response_str": "p",
+                },
+                execution={},
+            )
+            agent = await AgentFactory.create(agent_def, task_messages=[{"role": "user", "content": "Test"}])
+            assert any(t is RunCommandTool for t in agent.toolkit)
+            assert agent.tool_configs.get("runcommandtool", {}).get("mode") == "safe"
 
 
 class TestAgentFactoryErrorHandling:

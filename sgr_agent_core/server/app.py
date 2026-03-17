@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sgr_agent_core import AgentFactory, AgentRegistry, ToolRegistry, __version__
 from sgr_agent_core.server.endpoints import router
 from sgr_agent_core.services import StreamingGeneratorRegistry
+from sgr_agent_core.services.overlayfs_manager import OverlayFSManager
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,14 @@ async def lifespan(_: FastAPI):
         logger.info(f"Agent definition loaded: {defn}")
     for gen in StreamingGeneratorRegistry.list_items():
         logger.info(f"Streaming generator loaded: {gen.__name__}")
+
+    # Initialize OverlayFS for RunCommandTool if configured
+    await OverlayFSManager.initialize_from_config()
+
     yield
+
+    # Cleanup OverlayFS on shutdown
+    await OverlayFSManager.cleanup()
 
 
 app = FastAPI(title="SGR Agent Core API", version=__version__, lifespan=lifespan)
