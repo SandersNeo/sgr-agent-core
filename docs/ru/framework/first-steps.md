@@ -211,6 +211,13 @@ execution:
 **agents.yaml**
 
 ```yaml
+tools:
+  web_search_tool:
+    engine: "tavily"
+    api_key: "___"
+    max_results: 5
+    max_searches: 4
+
 agents:
   simple_search_agent:
     base_class: "ResearchSGRToolCallingAgent"
@@ -219,10 +226,6 @@ agents:
     tools:
       - "web_search_tool"
       - "final_answer_tool"
-    search:
-      tavily_api_key: "___"
-      max_results: 5
-      content_limit: 5000
 
   writer_agent:
     base_class: "SGRToolCallingAgent"
@@ -282,13 +285,6 @@ if __name__ == "__main__":
         "temperature": 0.2,
         "proxy": null
       },
-      "search": {
-        "tavily_api_key": "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",
-        "tavily_api_base_url": "https://api.tavily.com",
-        "max_searches": 4,
-        "max_results": 5,
-        "content_limit": 5000
-      },
       "execution": {
         "max_clarifications": 3,
         "max_iterations": 7,
@@ -313,8 +309,8 @@ if __name__ == "__main__":
       "name": "simple_search_agent",
       "base_class": "ResearchSGRToolCallingAgent",
       "tools": [
-        "WebSearchTool",
-        "FinalAnswerTool"
+        {"name": "web_search_tool", "tavily_api_key": "***", "max_results": 5, "content_limit": 5000},
+        {"name": "final_answer_tool"}
       ]
     }
     ```
@@ -330,7 +326,6 @@ if __name__ == "__main__":
         "temperature": 0.8,
         "proxy": null
       },
-      "search": null,
       "execution": {
         "max_clarifications": 3,
         "max_iterations": 7,

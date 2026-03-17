@@ -5,7 +5,7 @@ A powerful research assistant that combines structured reasoning with deep analy
 """
 
 # Version info
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 __author__ = "sgr-agent-core-team"
 
 # Base classes (from direct .py files)
@@ -16,7 +16,6 @@ from sgr_agent_core.agent_definition import (
     ExecutionConfig,
     LLMConfig,
     PromptsConfig,
-    SearchConfig,
 )
 from sgr_agent_core.agent_factory import AgentFactory
 from sgr_agent_core.agents import *  # noqa: F403
@@ -30,7 +29,12 @@ from sgr_agent_core.models import (
     SourceData,
 )
 from sgr_agent_core.next_step_tool import NextStepToolsBuilder, NextStepToolStub
-from sgr_agent_core.services import AgentRegistry, MCP2ToolConverter, PromptLoader, ToolRegistry
+from sgr_agent_core.services import (
+    AgentRegistry,
+    MCP2ToolConverter,
+    PromptLoader,
+    ToolRegistry,
+)
 from sgr_agent_core.tools import *  # noqa: F403
 
 __all__ = [
@@ -50,25 +54,19 @@ __all__ = [
     "SourceData",
     # Services
     "AgentRegistry",
-    "ToolRegistry",
-    "PromptLoader",
     "MCP2ToolConverter",
+    "PromptLoader",
+    "ToolRegistry",
     # Configuration
     "AgentConfig",
     "AgentDefinition",
     "LLMConfig",
     "PromptsConfig",
-    "SearchConfig",
     "ExecutionConfig",
     "GlobalConfig",
     # Next step tools
     "NextStepToolStub",
     "NextStepToolsBuilder",
-    # Models
-    "AgentStatesEnum",
-    "AgentContext",
-    "SearchResult",
-    "SourceData",
     # Factory
     "AgentFactory",
 ]

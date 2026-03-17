@@ -8,12 +8,12 @@ from sgr_agent_core.tools.adapt_plan_tool import AdaptPlanTool
 from sgr_agent_core.tools.answer_tool import AnswerTool
 from sgr_agent_core.tools.clarification_tool import ClarificationTool
 from sgr_agent_core.tools.create_report_tool import CreateReportTool
-from sgr_agent_core.tools.extract_page_content_tool import ExtractPageContentTool
+from sgr_agent_core.tools.extract_page_content_tool import ExtractPageContentConfig, ExtractPageContentTool
 from sgr_agent_core.tools.final_answer_tool import FinalAnswerTool
 from sgr_agent_core.tools.generate_plan_tool import GeneratePlanTool
 from sgr_agent_core.tools.reasoning_tool import ReasoningTool
 from sgr_agent_core.tools.run_command_tool import RunCommandTool
-from sgr_agent_core.tools.web_search_tool import WebSearchTool
+from sgr_agent_core.tools.web_search_tool import WebSearchConfig, WebSearchTool
 
 __all__ = [
     # Base classes
@@ -25,17 +25,16 @@ __all__ = [
     "ToolNameSelectorStub",
     "NextStepToolsBuilder",
     # Individual tools
-    "ClarificationTool",
-    "GeneratePlanTool",
-    "WebSearchTool",
-    "ExtractPageContentTool",
     "AdaptPlanTool",
-    "CreateReportTool",
     "AnswerTool",
+    "ClarificationTool",
+    "CreateReportTool",
+    "ExtractPageContentConfig",
+    "ExtractPageContentTool",
     "FinalAnswerTool",
+    "GeneratePlanTool",
     "ReasoningTool",
     "RunCommandTool",
-    # Tool lists
-    "NextStepToolStub",
-    "NextStepToolsBuilder",
+    "WebSearchConfig",
+    "WebSearchTool",
 ]

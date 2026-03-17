@@ -109,7 +109,7 @@ tools:
 Каждый элемент списка `tools` может быть:
 
 - **Строка** — имя инструмента (резолвится из секции `tools:` или `ToolRegistry`)
-- **Объект** — словарь с обязательным полем `"name"` и необязательными параметрами, передаваемыми в инструмент при вызове (например, настройки поиска)
+- **Объект** — компактный формат `{tool_name: {kwargs}}` или `{tool_name: null}` с необязательными kwargs, переопределяющими глобальный конфиг тула
 
 ```yaml
 agents:
@@ -118,16 +118,16 @@ agents:
     tools:
       - "web_search_tool"
       - "reasoning_tool"
-      # Конфиг по инструменту: name + kwargs (например, настройки поиска)
-      - name: "extract_page_content_tool"
-        content_limit: 2000
-      - name: "web_search_tool"
-        max_results: 15
-        max_searches: 6
-        # tavily_api_key, max_searches и т.д. можно задать здесь вместо глобального search:
+      # Конфиг по инструменту: {tool_name: {kwargs}}
+      - extract_page_content_tool:
+          content_limit: 2000
+      - web_search_tool:
+          max_results: 15
+          max_searches: 6
+          # tavily_api_key и другие настройки можно задать здесь или глобально в tools:
 ```
 
-Настройки поиска (`tavily_api_key`, `tavily_api_base_url`, `max_results`, `content_limit`, `max_searches`) можно задавать глобально в `search:` или в объекте инструмента. kwargs инструмента переопределяют агентский `search` для этого инструмента.
+Настройки поиска (`engine`, `api_key`, `max_results`, `content_limit`, `max_searches`) задаются в секции `tools:` (глобальные значения по умолчанию) или переопределяются для агента в списке `tools`.
 
 !!! note "Порядок резолва инструментов"
     При резолве инструментов система проверяет в порядке:
@@ -179,9 +179,20 @@ agents:
 Агент с полным переопределением параметров:
 
 ```yaml
+# Настройки поисковых тулов задаются глобально в секции tools:
+tools:
+  web_search_tool:
+    engine: "tavily"           # "tavily" (по умолчанию), "brave" или "perplexity"
+    api_key: "your-tavily-api-key"
+    max_results: 15
+    max_searches: 6
+  extract_page_content_tool:
+    tavily_api_key: "your-tavily-api-key"
+    content_limit: 2000
+
 agents:
   custom_research_agent:
-    base_class: "sgr_agent_core.agents.sgr_agent.ResearchSGRAgent"
+    base_class: "examples.sgr_deep_research.agents.ResearchSGRAgent"
 
     # Переопределяем LLM настройки
     llm:
@@ -190,17 +201,10 @@ agents:
       max_tokens: 16000
       # api_key и base_url наследуются из GlobalConfig
 
-    # Переопределяем настройки поиска
-    search:
-      max_results: 15
-      max_searches: 6
-      content_limit: 2000
-
     # Переопределяем настройки выполнения
     execution:
       max_iterations: 15
       max_clarifications: 5
-      max_searches: 6
       streaming_generator: "openai"  # по умолчанию; "open_webui" для Open WebUI
       logs_dir: "logs/custom_agent"
       reports_dir: "reports/custom_agent"
@@ -233,10 +237,10 @@ agents:
     execution:
       max_iterations: 8  # Меньше итераций
       max_clarifications: 2
-      max_searches: 3
 
     tools:
-      - "web_search_tool"
+      - web_search_tool:
+          max_searches: 3
       - "create_report_tool"
       - "final_answer_tool"
       - "reasoning_tool"
@@ -290,10 +294,10 @@ agents:
 
     execution:
       max_iterations: 20
-      max_searches: 8
 
     tools:
-      - "web_search_tool"
+      - web_search_tool:
+          max_searches: 8
       - "extract_page_content_tool"
       - "create_report_tool"
       - "clarification_tool"

@@ -30,13 +30,12 @@ tools:
   # Core tools (base_class defaults to sgr_agent_core.tools.*)
   # Search tools: configure Tavily API key and search limits per tool
   web_search_tool:
-    tavily_api_key: "your-tavily-api-key-here"  # Tavily API key (get at tavily.com)
-    tavily_api_base_url: "https://api.tavily.com"  # Tavily API URL
+    engine: "tavily"  # Search engine: "tavily" (default), "brave", or "perplexity"
+    api_key: "your-tavily-api-key-here"  # API key for the selected engine
     max_searches: 4  # Max search operations
     max_results: 10  # Max results in search query
   extract_page_content_tool:
-    tavily_api_key: "your-tavily-api-key-here"  # Same Tavily API key
-    tavily_api_base_url: "https://api.tavily.com"
+    tavily_api_key: "your-tavily-api-key-here"  # Tavily API key (Tavily extract only)
     content_limit: 1500  # Content char limit per source
   create_report_tool:
     # base_class defaults to sgr_agent_core.tools.CreateReportTool
@@ -98,6 +97,21 @@ agents:
       - "final_answer_tool"
       - "clarification_tool"
       - "reasoning_tool"
+      - "generate_plan_tool"
+      - "adapt_plan_tool"
+
+  # Iron Agent for research (no tool calling / structured output required)
+  iron_agent:
+    base_class: "agents.ResearchIronAgent"
+    llm:
+      model: "gpt-4.1-mini"
+      temperature: 0.4
+    tools:
+      - "web_search_tool"
+      - "extract_page_content_tool"
+      - "create_report_tool"
+      - "final_answer_tool"
+      - "clarification_tool"
       - "generate_plan_tool"
       - "adapt_plan_tool"
 
