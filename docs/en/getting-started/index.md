@@ -115,6 +115,7 @@ if __name__ == "__main__":
 
 ## Documentation
 
+- **[Highlights](../highlights.md)** — What's cool about this framework: short cases and intuitive examples
 - **[Installation](installation.md)** — Detailed installation instructions for pip and Docker
 - **[Agent Core Framework](../framework/main-concepts.md)** — Understand the core concepts and architecture
 - **[Using as Library](../framework/first-steps.md)** — Learn how to use SGR Agent Core as a Python library
